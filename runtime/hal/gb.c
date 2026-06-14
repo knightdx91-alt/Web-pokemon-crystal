@@ -47,6 +47,7 @@ uint32_t gb_dbg_trace_head(void) { return g_trace_i; }
 uint32_t gb_dbg_trace_at(uint32_t i) { return g_trace[i & (TRACE_N - 1)]; }
 
 /* --- debug surface (read CPU/trap state from JS) --------------------------- */
+int      gb_dbg_io(int a)     { return io[a & 0x7f]; }
 uint16_t gb_dbg_pc(void)      { return cpu.pc; }
 uint8_t  gb_dbg_bank(void)    { return cpu.rom_bank; }
 uint8_t  gb_dbg_halted(void)  { return (uint8_t)cpu.halted; }

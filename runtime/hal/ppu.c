@@ -222,5 +222,9 @@ void ppu_step(uint32_t tcycles) {
     }
 }
 
+/* debug accessors: return linear-memory offsets JS can read */
+const uint8_t *gb_dbg_bgpal(void)  { return bg_palram; }
+const uint8_t *gb_dbg_objpal(void) { return obj_palram; }
+
 int ppu_frame_pending(void) { return frame_latch; }            /* peek, non-consuming */
 int ppu_take_frame(void) { int f = frame_latch; frame_latch = 0; return f; }

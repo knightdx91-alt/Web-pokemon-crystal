@@ -62,10 +62,21 @@ executing end-to-end through real hardware before widening coverage.
 - 🔧 **Debug/trace tooling** added for this kind of work: execution trace ring +
   `gb_dbg_*` exports, and `tools/trace_boot.mjs` (boots the real ROM, runs to the
   first trap, prints the symbol-annotated block trace leading up to it).
-- ⏳ **Next: black screen.** LCD is on (LCDC=0xe3) and the game loop runs, but the
-  framebuffer is uniform black — investigate palette RAM population, BG tilemap/tile
-  fetch (CGB VRAM banking), and whether the main loop is progressing past the
-  intro/copyright. Then jump-table following to widen translated coverage cleanly.
+- ⏳ **Black screen root-caused to the SOUND ENGINE.** Diagnostics added: VRAM-write
+  + HDMA counters, IO/palette/VRAM accessors. Findings: VRAM is written only during
+  the init clear (16384 bytes) then never again; **no graphics load**. The full
+  execution-trace ring shows the last 1024 dispatched blocks are *all* in the sound
+  bank (0x3a) — i.e. the VBlank handler's `_UpdateSound` never returns. It's stuck
+  endlessly parsing music commands (ParseMusic/GetMusicByte/GetFrequency), starving
+  the main thread so it never loads the intro/title graphics. Likely a corrupted
+  music pointer / duration counter from a subtle instruction mistranslation.
+  - Implemented CGB **HDMA/VDMA** ($FF51-$FF55) + **OAM DMA** so graphics CAN load
+    once the sound loop is fixed.
+- ⏳ **Next (highest value): per-instruction reference diff.** Build/compile a known-
+  good GB emulator, run the same ROM, and diff CPU+memory state per step to pin the
+  first divergence inside `_UpdateSound`. Manual tracing has localized it to the
+  sound parse; ground truth is needed to find the exact opcode. Then jump-table
+  following to widen translated coverage cleanly.
 - Practical note: translating all 128 banks → ~47 MB C / 24 MB wasm / ~4 min build.
   Targeted sets (e.g. `CODE_BANKS=0-7,58,66`) build in ~30s for fast iteration.
   Production will translate only code-bearing banks + jump-table-driven discovery.

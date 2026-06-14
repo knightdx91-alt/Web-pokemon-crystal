@@ -24,6 +24,11 @@ static uint8_t cart_ram[0x8000];
 static int vram_bank = 0;
 static int wram_bank = 1;
 
+const uint8_t *gb_dbg_vram(void) { return vram; }   /* debug: VRAM base offset */
+uint32_t g_vramw, g_hdma;                            /* debug counters */
+uint32_t gb_dbg_vramw(void) { return g_vramw; }
+uint32_t gb_dbg_hdma(void)  { return g_hdma; }
+
 uint8_t bus_read(uint16_t addr) {
     if (addr < 0x4000)            return g_rom[addr];                       /* bank 0 */
     if (addr < 0x8000)            return g_rom[cpu.rom_bank * 0x4000 + (addr - 0x4000)];
@@ -43,7 +48,7 @@ uint8_t bus_read(uint16_t addr) {
 
 void bus_write(uint16_t addr, uint8_t value) {
     if (addr < 0x8000)            { mbc_write(addr, value); return; }       /* MBC control */
-    if (addr < 0xA000)            { vram[vram_bank * 0x2000 + (addr - 0x8000)] = value; return; }
+    if (addr < 0xA000)            { g_vramw++; vram[vram_bank * 0x2000 + (addr - 0x8000)] = value; return; }
     if (addr < 0xC000)            { cart_ram[cpu.ram_bank * 0x2000 + (addr - 0xA000)] = value; return; }
     if (addr < 0xD000)            { wram[addr - 0xC000] = value; return; }
     if (addr < 0xE000)            { wram[wram_bank * 0x1000 + (addr - 0xD000)] = value; return; }
@@ -54,6 +59,15 @@ void bus_write(uint16_t addr, uint8_t value) {
                                     for (int i = 0; i < 0xA0; i++) oam[i] = bus_read(s + i);
                                     io[0x46] = value; return; }
     if (addr == 0xFF4F)           { vram_bank = value & 1; return; }
+    if (addr == 0xFF55)           {                                          /* CGB VDMA/HDMA */
+        uint16_t src = (uint16_t)(((io[0x51] << 8) | io[0x52]) & 0xFFF0);
+        uint16_t dst = (uint16_t)(((io[0x53] << 8) | io[0x54]) & 0x1FF0);     /* VRAM offset */
+        int len = ((value & 0x7F) + 1) * 0x10;
+        for (int i = 0; i < len; i++)
+            vram[vram_bank * 0x2000 + ((dst + i) & 0x1FFF)] = bus_read((uint16_t)(src + i));
+        g_hdma++; io[0x55] = 0xFF;   /* transfer complete */
+        return;
+    }
     if (addr >= 0xFF68 && addr <= 0xFF6B) { ppu_pal_write(addr, value); return; }  /* CGB palettes */
     if (addr == 0xFF70)           { wram_bank = (value & 7) ? (value & 7) : 1; return; }
     if (addr < 0xFF80)            { io[addr - 0xFF00] = value; return; }    /* TODO device regs */
