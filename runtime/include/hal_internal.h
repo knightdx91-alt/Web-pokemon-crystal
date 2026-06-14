@@ -25,15 +25,23 @@ uint8_t joypad_read(void);  /* $FF00, runtime/hal/timer_irq_input.c */
 void trap(void);
 void trap_pc(uint16_t pc);
 
-/* ALU + CB helpers (runtime/hal/alu.c) operate on cpu.a / flags */
+/* ALU + helpers (runtime/hal/alu.c) operate on cpu.a / flags */
 void alu_add(uint8_t v); void alu_adc(uint8_t v);
 void alu_sub(uint8_t v); void alu_sbc(uint8_t v);
 void alu_and(uint8_t v); void alu_or(uint8_t v);
 void alu_xor(uint8_t v); void alu_cp(uint8_t v);
-void cb_rlc(uint8_t *r); void cb_rrc(uint8_t *r);
-void cb_rl(uint8_t *r);  void cb_rr(uint8_t *r);
-void cb_sla(uint8_t *r); void cb_sra(uint8_t *r);
-void cb_swap(uint8_t *r);void cb_srl(uint8_t *r);
-void cb_rlc_hl(void); /* …_hl variants act on bus_read/write(HL()) */
+
+void add16_hl(uint16_t v);          /* add hl, rr */
+uint16_t sp_offset(int e);          /* add sp,e / ld hl,sp+e (sets H/C) */
+
+void op_rlca(void); void op_rrca(void); void op_rla(void); void op_rra(void);
+void op_daa(void);  void op_cpl(void);  void op_scf(void); void op_ccf(void);
+void cpu_stop(void);                /* stop: CGB speed switch, in gb.c */
+
+/* CB shift/rotate set: register form (cb_x) + memory form (cb_x_hl) */
+#define CB_DECL(n) void cb_##n(uint8_t *r); void cb_##n##_hl(void);
+CB_DECL(rlc) CB_DECL(rrc) CB_DECL(rl) CB_DECL(rr)
+CB_DECL(sla) CB_DECL(sra) CB_DECL(swap) CB_DECL(srl)
+#undef CB_DECL
 
 #endif /* HAL_INTERNAL_H */

@@ -3,7 +3,6 @@
  */
 #include "gb.h"
 #include "hal_internal.h"
-#include <stdlib.h>
 
 CpuState cpu;
 const uint8_t *g_rom;
@@ -11,6 +10,7 @@ uint32_t g_rom_len;
 
 extern uint8_t io[];
 
+void cpu_stop(void)        { /* TODO: CGB double-speed switch via KEY1 ($FF4D) */ }
 void trap(void)            { /* TODO: surface un-translated opcode to JS console */ }
 void trap_pc(uint16_t pc)  { (void)pc; /* TODO: un-translated address */ }
 

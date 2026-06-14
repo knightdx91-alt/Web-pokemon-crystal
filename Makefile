@@ -7,9 +7,13 @@ recompile: ; bash build/recompile.sh
 wasm:      ; bash build/build_wasm.sh
 serve:     ; cd web && python3 -m http.server 8000
 
-# fast recompiler unit checks (no rgbds/clang needed)
+# fast checks (no rgbds needed): opcode coverage + HAL compiles under wasm32
 test:
-	cd tools/recompiler && python3 decode.py && python3 -m pyflakes *.py 2>/dev/null || true
+	cd tools/recompiler && python3 decode.py >/dev/null && python3 coverage.py
+	for f in runtime/hal/*.c; do \
+	  clang --target=wasm32 -nostdlib -ffreestanding -Iruntime/include -fsyntax-only $$f || exit 1; \
+	done
+	@echo "OK: opcode coverage clean, HAL compiles"
 
 clean:
 	rm -rf generated/*.c build/rom web/pokecrystal.wasm

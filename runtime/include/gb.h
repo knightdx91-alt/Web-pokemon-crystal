@@ -1,7 +1,7 @@
 /* gb.h — the contract shared by recompiler-generated code and the HAL.
  *
  * Generated code (generated/rom_code.c) calls bus_read/bus_write and the helpers
- * here; it never touches hardware directly. The HAL (runtime/hal/*.c) implements
+ * here; it never touches hardware directly. The HAL (runtime/hal source) implements
  * the bus + devices. The web frontend only sees the gb_* exports at the bottom.
  *
  * See ARCHITECTURE.md §3-§4.

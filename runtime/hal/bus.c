@@ -6,7 +6,6 @@
  */
 #include "gb.h"
 #include "hal_internal.h"
-#include <string.h>
 
 /* ROM banks are emitted by the recompiler as data arrays (rom_bank_NN) for data
  * banks; code banks live as functions. For the bus we need the raw bytes of every

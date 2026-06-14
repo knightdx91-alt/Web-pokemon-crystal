@@ -12,10 +12,11 @@ executing end-to-end through real hardware before widening coverage.
 
 ## Phase 1 — Make the pipeline run for real
 1. Install `rgbds` in the build env; `make sources rom` to produce gbc + sym + map.
-2. `make recompile CODE_BANKS=0`; inspect `generated/bank_00.c` against a known
-   disassembly of bank 0 (home section). Fix decoder/translator gaps surfaced as
-   `/* TODO */ trap()`.
-3. Complete `translate.py` coverage: every opcode group, no traps in bank 0.
+2. ✅ **Translator coverage complete**: all 500 defined opcodes translate with zero
+   `trap()` (`make test` / `tools/recompiler/coverage.py`). ALU/CB/rotate/DAA helpers
+   implemented in `runtime/hal/alu.c`; all HAL compiles under `--target=wasm32`.
+3. `make recompile CODE_BANKS=0`; diff `generated/bank_00.c` against a known
+   disassembly of bank 0 (home section) to validate real output (needs the ROM).
 4. Wire the frame loop in `gb.c` (cycle accounting + HAL catch-up + `int_service`).
 
 ## Phase 2 — Hardware fidelity

@@ -7,7 +7,6 @@
  */
 #include "gb.h"
 #include "hal_internal.h"
-#include <string.h>
 
 extern uint8_t vram[];
 extern uint8_t oam[];
