@@ -90,11 +90,20 @@ executing end-to-end through real hardware before widening coverage.
   state corruption / timing, not a bad instruction. Inconsistency (`wMusicPlaying=1`
   with empty channels) points at the music-start path or an interrupt/IME-timing
   issue corrupting `wCurChannel`/channel flags.
-- ⏳ **Next leads:** (a) trace `wCurChannel` + channel-on bit *within* one
-  `_UpdateSound` call to catch the overrun instant; (b) audit EI/IME 1-instruction
-  delay and interrupt-at-block-boundary timing (not covered by SingleStepTests);
-  (c) verify the music-start path (PlayMusic/LoadChannel) populated channels. Then
-  jump-table following to widen translated coverage cleanly.
+- 🎯 **Mechanism pinned** (write-watch tooling `gb_dbg_set_watch`/`_watch_at`): the
+  per-channel loop runs `wCurChannel` 0→14 (`0,0,1..e`) then gets STUCK inside
+  `ParseMusic` for one channel. Ordered trace of the hang:
+  `ParseMusic → ParseMusicCommand → Music_PitchSlide → GetMusicByte → GetFrequency`
+  repeating forever. That channel is **ON but its music address is 0**, so
+  `GetMusicByte`/`_LoadMusicByte` read ROM `$0000` (header/vectors) and parse it as an
+  endless stream of pitch-slide commands — never a note, so `ParseMusic` never returns
+  and the VBlank handler never finishes. `wMusicID=0` (no real song) yet
+  `wMusicPlaying=1` and a channel enabled = inconsistent state. The loop terminator
+  (`cp NUM_CHANNELS; jp nz` at `3a:410f`) and its generated C are verified correct, so
+  the bug is upstream: a channel got `SOUND_CHANNEL_ON` set without a valid pointer.
+- ⏳ **Next:** watch when `SOUND_CHANNEL_ON` / `wMusicPlaying` get set during boot
+  (the music-init / `PlayMusic` path) to find what enables a channel with addr=0.
+  Candidate: an interrupt/timing edge or the sound-init sequence running out of order.
 - Practical note: translating all 128 banks → ~47 MB C / 24 MB wasm / ~4 min build.
   Targeted sets (e.g. `CODE_BANKS=0-7,58,66`) build in ~30s for fast iteration.
   Production will translate only code-bearing banks + jump-table-driven discovery.

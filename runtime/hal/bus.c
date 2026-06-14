@@ -29,6 +29,14 @@ uint32_t g_vramw, g_hdma;                            /* debug counters */
 uint32_t gb_dbg_vramw(void) { return g_vramw; }
 uint32_t gb_dbg_hdma(void)  { return g_hdma; }
 
+/* write-watch: record values written to a chosen address (debug) */
+static int g_watch = -1;
+static uint8_t g_watch_buf[1024];
+static uint32_t g_watch_head;
+void     gb_dbg_set_watch(int addr) { g_watch = addr; g_watch_head = 0; }
+uint32_t gb_dbg_watch_head(void) { return g_watch_head; }
+uint8_t  gb_dbg_watch_at(uint32_t i) { return g_watch_buf[i & 1023]; }
+
 uint8_t bus_read(uint16_t addr) {
     if (addr < 0x4000)            return g_rom[addr];                       /* bank 0 */
     if (addr < 0x8000)            return g_rom[cpu.rom_bank * 0x4000 + (addr - 0x4000)];
@@ -47,6 +55,7 @@ uint8_t bus_read(uint16_t addr) {
 }
 
 void bus_write(uint16_t addr, uint8_t value) {
+    if ((int)addr == g_watch) g_watch_buf[g_watch_head++ & 1023] = value;
     if (addr < 0x8000)            { mbc_write(addr, value); return; }       /* MBC control */
     if (addr < 0xA000)            { g_vramw++; vram[vram_bank * 0x2000 + (addr - 0x8000)] = value; return; }
     if (addr < 0xC000)            { cart_ram[cpu.ram_bank * 0x2000 + (addr - 0xA000)] = value; return; }
