@@ -39,12 +39,18 @@ void hram_exec(uint16_t pc) {
 }
 
 /* --- execution trace ring (last N dispatched blocks, bank<<16|pc) ---------- */
-#define TRACE_N 1024
-static uint32_t g_trace[TRACE_N];
+#define TRACE_N 4096
+static uint32_t g_trace[TRACE_N];     /* bank<<16 | pc */
+static uint32_t g_trace_aux[TRACE_N]; /* wCurChannel<<8 | cpu.f, sampled per block */
 static uint32_t g_trace_i;
-static void trace_push(uint32_t v) { g_trace[g_trace_i++ & (TRACE_N - 1)] = v; }
+static void trace_push(uint32_t v) {
+    g_trace[g_trace_i & (TRACE_N - 1)] = v;
+    g_trace_aux[g_trace_i & (TRACE_N - 1)] = (bus_read(0xC299) << 8) | cpu.f;
+    g_trace_i++;
+}
 uint32_t gb_dbg_trace_head(void) { return g_trace_i; }
 uint32_t gb_dbg_trace_at(uint32_t i) { return g_trace[i & (TRACE_N - 1)]; }
+uint32_t gb_dbg_trace_aux(uint32_t i) { return g_trace_aux[i & (TRACE_N - 1)]; }
 
 /* --- debug surface (read CPU/trap state from JS) --------------------------- */
 int      gb_dbg_io(int a)     { return io[a & 0x7f]; }

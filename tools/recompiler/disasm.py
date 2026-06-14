@@ -62,8 +62,11 @@ def disassemble_bank(rom: bytes, bank: int, syms: SymbolTable) -> dict[int, Bloc
                 if ins.target is not None and lo <= ins.target < hi:
                     blk.succ.append(ins.target); worklist.append(ins.target)
                 break
-            if ins.is_ret:
-                break
+            # NOTE: only UNCONDITIONAL ret/reti are terminal (handled above). A
+            # CONDITIONAL ret (ret z/nz/nc/c) has a fall-through path, so it must NOT
+            # end the block — the instructions after it are real code (e.g. the
+            # wCurChannel reset right after `ret z` in _UpdateSound). Let it continue
+            # inline like a conditional jump; emit.py emits the guarded return.
             if ins.is_call:
                 # In the per-block-return model a call hands control back to the
                 # trampoline, which later resumes at the return address — so that
