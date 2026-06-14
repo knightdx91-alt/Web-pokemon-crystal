@@ -66,14 +66,16 @@ void int_request(uint8_t mask);       /* OR into IF */
 int  int_pending(void);               /* IE & IF & 0x1F */
 void int_service(void);               /* push PC, jump to vector, clear IME       */
 
-/* ------------------------------------------------------------------ banked call */
-/* Trampoline for farcall/rst/homecall: run code at (bank, addr) and return.
- * Implemented in generated dispatch; declared here so the HAL/vectors can use it. */
-void rom_call(uint8_t bank, uint16_t addr);
+/* ------------------------------------------------------------------ trampoline */
+/* Routes cpu.pc to the right bank function: home ($0000-$3FFF) -> bank 0; the
+ * switchable window ($4000-$7FFF) -> bank selected by cpu.rom_bank. Executes one
+ * basic block (which sets cpu.pc to its successor) and returns. Generated into
+ * generated/dispatch.c by the recompiler. */
+void rom_dispatch(uint16_t pc);
 
-/* Entry the recompiler emits: runs translated code starting at pc until it
- * returns to the dispatcher (e.g. on ret to a sentinel). */
-void rom_exec(void);
+/* Emulates the OAM-DMA routine the game copies into and calls from HRAM (RAM code
+ * can't be statically recompiled). Implemented in the HAL (gb.c). */
+void hram_exec(uint16_t pc);
 
 /* ------------------------------------------------------------------ exports     */
 /* The only surface the web/ frontend sees. */

@@ -50,7 +50,9 @@ void bus_write(uint16_t addr, uint8_t value) {
     if (addr < 0xFE00)            { wram[addr - 0xE000] = value; return; }
     if (addr < 0xFEA0)            { oam[addr - 0xFE00] = value; return; }
     if (addr < 0xFF00)            return;
-    if (addr == 0xFF46)           { /* TODO OAM DMA */ }
+    if (addr == 0xFF46)           { uint16_t s = (uint16_t)(value << 8);     /* OAM DMA */
+                                    for (int i = 0; i < 0xA0; i++) oam[i] = bus_read(s + i);
+                                    io[0x46] = value; return; }
     if (addr == 0xFF4F)           { vram_bank = value & 1; return; }
     if (addr >= 0xFF68 && addr <= 0xFF6B) { ppu_pal_write(addr, value); return; }  /* CGB palettes */
     if (addr == 0xFF70)           { wram_bank = (value & 7) ? (value & 7) : 1; return; }

@@ -19,6 +19,44 @@ from emit import emit_bank
 # banks become C (dispatch functions); everything else stays data in g_rom.
 
 
+def emit_dispatch(code_banks: set[int], nbanks: int) -> str:
+    """Generate the bank function-pointer table + rom_dispatch trampoline.
+
+    rom_dispatch routes cpu.pc to the correct bank function: home ($0000-$3FFF)
+    always goes to bank 0; the switchable window ($4000-$7FFF) goes to the bank
+    selected by cpu.rom_bank. Untranslated banks route to a trap stub.
+    """
+    decls = "\n".join(f"void bank_{b:02x}(uint16_t pc);" for b in sorted(code_banks))
+    table = ",\n    ".join(
+        (f"bank_{b:02x}" if b in code_banks else "bank_stub") for b in range(nbanks))
+    return f"""/* dispatch.c — generated bank trampoline (do not edit) */
+#include "gb.h"
+#include "hal_internal.h"
+
+{decls}
+
+static void bank_stub(uint16_t pc) {{
+    /* execution entered an untranslated bank: stop cleanly (see ROADMAP Phase 3) */
+    trap_pc(pc);
+    cpu.halted = 1;
+}}
+
+static void (*const bank_table[{nbanks}])(uint16_t) = {{
+    {table}
+}};
+
+void rom_dispatch(uint16_t pc) {{
+    if (pc >= 0xFF80 && pc < 0xFFFF) {{ hram_exec(pc); return; }}  /* HRAM (OAM DMA) */
+    if (pc < 0x4000) bank_00(pc);                 /* home bank, always mapped */
+    else {{
+        uint8_t b = cpu.rom_bank;
+        if (b < {nbanks}) bank_table[b](pc);
+        else trap_pc(pc);
+    }}
+}}
+"""
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--rom", required=True)
@@ -33,7 +71,7 @@ def main() -> None:
     nbanks = len(rom) // 0x4000
     os.makedirs(args.out, exist_ok=True)
 
-    code_banks: set[int] = set()
+    code_banks: set[int] = {0}            # home bank is always required
     for part in args.code_banks.split(","):
         if "-" in part:
             a, b = part.split("-"); code_banks.update(range(int(a), int(b) + 1))
@@ -54,7 +92,10 @@ def main() -> None:
         written += 1
         print(f"  bank {bank:02x}: {len(blocks)} blocks")
 
-    print(f"Wrote {written} code-bank file(s) to {args.out}/ "
+    with open(os.path.join(args.out, "dispatch.c"), "w") as fh:
+        fh.write(emit_dispatch(code_banks, nbanks))
+
+    print(f"Wrote {written} code-bank file(s) + dispatch.c to {args.out}/ "
           f"(data stays in g_rom, provided at runtime).")
     print("NOTE: incremental — broaden --code-banks as coverage/data-separation grows.")
 

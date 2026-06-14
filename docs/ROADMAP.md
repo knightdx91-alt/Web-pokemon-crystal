@@ -43,9 +43,28 @@ executing end-to-end through real hardware before widening coverage.
 - Correct joypad bit mapping.
 
 ## Phase 3 — Boot to title
-- Translate all code banks (`CODE_BANKS=0-…`). Resolve banked-call trampoline
-  (`rom_call` → generated per-bank dispatch table).
-- Get past the copyright/intro to the title screen, then to overworld.
+- ✅ **Multi-bank dispatch built**: per-block-return model + `rom_dispatch` trampoline
+  (`generated/dispatch.c`) routing `cpu.pc` to `bank_NN` via a table indexed by
+  `cpu.rom_bank` (home → bank 0). Cross-bank calls/returns work. Disassembler now
+  splits blocks at `call`/`rst` so return addresses are block starts; symbols are
+  seeded without the old (buggy) data-suffix filter.
+- ✅ **Boot runs on the real ROM**: clears the LY-wait, WRAM/VRAM clears, CGB palette
+  init, turns the LCD on (LCDC=0xe3), and executes thousands of blocks across banks
+  0,1,2,5,0x58,0x66… `gb_init` sets post-boot CGB I/O state (LCD on). OAM DMA handled:
+  `bus.c` $FF46 write copies to OAM; `hram_exec` emulates the HRAM OAM-DMA routine
+  (RAM code can't be statically recompiled).
+- ⏳ **Two remaining blockers to title:**
+  1. **Jump-table following** — computed `jp hl` / `dw` pointer tables land on targets
+     the recursive walk didn't seed → traps. Need to recognise pokecrystal's jump-
+     table macros and seed their targets as blocks.
+  2. **Translation-correctness divergence** — boot eventually lands `cpu.pc` inside
+     *map-script data* (e.g. `66:4093 AzaleaTown_MapScripts`), i.e. an earlier
+     mistranslated instruction corrupted a return address / computed jump. Localise
+     via a determinism harness comparing CPU/mem state against a reference emulator
+     trace (Phase 4) frame by frame.
+- Practical note: translating all 128 banks → ~47 MB C / 24 MB wasm / ~4 min build.
+  Fine for bring-up; production will translate only code-bearing banks + lazy/jump-
+  table-driven discovery, and/or split the wasm.
 
 ## Phase 4 — Validation & feel
 - Determinism harness: hash framebuffer at known frames against a reference emulator

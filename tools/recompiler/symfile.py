@@ -17,10 +17,6 @@ class Symbol:
     addr: int          # 0x0000-0xFFFF as written in the bank window
     name: str
 
-    @property
-    def is_code_hint(self) -> bool:
-        # rgbds data labels are conventionally suffixed; heuristic, refined by disasm.
-        return not self.name.endswith(("Data", "GFX", "Pals", "Palettes", "Map"))
 
 
 class SymbolTable:
@@ -37,8 +33,11 @@ class SymbolTable:
         return s.name if s else None
 
     def code_seeds(self) -> list[Symbol]:
-        """Labels that plausibly start code, used to seed recursive disassembly."""
-        return [s for s in self.symbols if s.is_code_hint]
+        """Labels that plausibly start code, used to seed recursive disassembly.
+        We seed from ALL symbols: a data label seeded as code just yields blocks
+        nothing ever jumps to (harmless), whereas a missing code label causes a
+        runtime trap. Genuine code/data separation is handled by the disassembler."""
+        return list(self.symbols)
 
     @classmethod
     def parse(cls, path: str) -> "SymbolTable":

@@ -1,9 +1,13 @@
 """Turn disassembled blocks into C source.
 
-Each bank becomes a function `bank_NN(uint16_t pc)` containing a `switch (pc)` whose
-cases are basic-block entry addresses (the control-flow dispatch of ARCHITECTURE.md
-§3.1). Straight-line instructions inside a block come from translate.py; branches set
-`pc` and re-enter the switch or call into another bank via rom_call().
+Control-flow model (ARCHITECTURE.md §3.1, multi-bank revision): each bank becomes a
+function `bank_NN(uint16_t pc)` whose `switch (pc)` cases are basic-block entries.
+A block executes exactly once, sets `cpu.pc` to its successor (branch target, call
+target, popped return, or fall-through), and `return`s. The central trampoline
+`rom_dispatch(cpu.pc)` (generated/dispatch.c) then routes the next block to the right
+bank function via a table indexed by `cpu.rom_bank` — so cross-bank calls just work:
+the game sets the bank register, the table follows it. The frame loop (gb.c) calls
+rom_dispatch + hal_catch_up per block, so timing/IRQs are handled between blocks.
 """
 from __future__ import annotations
 from decode import Insn
@@ -16,7 +20,8 @@ _TAKEN_PENALTY = {"jr": 4, "jp": 4, "call": 12, "ret": 12}
 
 
 def _emit_branch(ins: Insn, lines: list[str]) -> None:
-    """Emit C for a control-flow instruction at the end (or middle) of a block."""
+    """Emit C for a control-flow instruction. Every taken path ends in `return;`,
+    handing control back to the trampoline with cpu.pc set."""
     m = ins.mnemonic
     cond = None
     if ins.operands and isinstance(ins.operands[0], str) and ins.operands[0] in ("nz", "z", "nc", "c"):
@@ -31,41 +36,39 @@ def _emit_branch(ins: Insn, lines: list[str]) -> None:
 
     if m in ("jp", "jr"):
         if ins.target is not None:
-            lines.append("    " + guarded(f"pc = 0x{ins.target:04x}; goto dispatch;"))
-        else:  # jp hl (computed)
-            lines.append("    pc = HL(); goto dispatch;")
+            lines.append("    " + guarded(f"cpu.pc = 0x{ins.target:04x}; return;"))
+        else:  # jp hl (computed) — target resolved at runtime; trampoline routes it
+            lines.append("    cpu.pc = HL(); return;")
     elif m == "call":
         ret = ins.addr + ins.length
         if ins.target is not None:
-            lines.append("    " + guarded(f"push16(0x{ret:04x}); pc = 0x{ins.target:04x}; goto dispatch;"))
+            lines.append("    " + guarded(f"push16(0x{ret:04x}); cpu.pc = 0x{ins.target:04x}; return;"))
     elif m == "rst":
-        lines.append(f"    push16(0x{ins.addr + ins.length:04x}); pc = 0x{ins.target:04x}; goto dispatch;")
+        lines.append(f"    push16(0x{ins.addr + ins.length:04x}); cpu.pc = 0x{ins.target:04x}; return;")
     elif m in ("ret", "reti"):
         if m == "reti":
             lines.append("    cpu.ime = 1;")
-        lines.append("    " + guarded("cpu.pc = pop16(); return; /* return to caller dispatcher */"))
+        lines.append("    " + guarded("cpu.pc = pop16(); return;"))
 
 
 def emit_block(blk: Block) -> list[str]:
-    # Base T-cycles for the whole block charged up front; conditional-branch taken
-    # penalties are added inline by _emit_branch. hal_catch_up() at dispatch keeps
-    # the PPU/timers advancing during long routines (ARCHITECTURE.md §3.3).
+    # Base T-cycles for the block charged up front; conditional-branch taken penalties
+    # are added inline by _emit_branch.
     base = sum(ins.cycles for ins in blk.insns)
     out = [f"  case 0x{blk.start:04x}:", f"    cpu.cycles += {base};"]
     for ins in blk.insns:
         if ins.is_jump or ins.is_call or ins.is_ret:
             _emit_branch(ins, out)
         elif ins.mnemonic == "halt":
-            # suspend until interrupt; save resume pc and yield to the frame loop
+            # suspend until interrupt; save resume pc and hand back to the frame loop
             out.append(f"    cpu.halted = 1; cpu.pc = 0x{ins.addr + ins.length:04x}; return;")
         else:
             for c in translate(ins):
                 out.append(f"    {c}")
-    # fall-through to the next block address if the last insn wasn't terminal
+    # fall-through to the next address if the last instruction wasn't a transfer
     last = blk.insns[-1] if blk.insns else None
     if last and not (last.is_terminal or last.is_ret):
-        nxt = last.addr + last.length
-        out.append(f"    pc = 0x{nxt:04x}; goto dispatch;")
+        out.append(f"    cpu.pc = 0x{last.addr + last.length:04x}; return;")
     return out
 
 
@@ -75,15 +78,12 @@ def emit_bank(bank: int, blocks: dict[int, Block]) -> str:
              '#include "hal_internal.h"',
              "",
              f"void bank_{bank:02x}(uint16_t pc) {{",
-             "dispatch:",
-             "  cpu.pc = pc;             /* checkpoint for resume on yield */",
-             "  hal_catch_up();          /* advance PPU/APU/timers to cpu.cycles */",
-             "  if (g_yield) return;     /* frame done / deadline: hand back to loop */",
              "  switch (pc) {"]
     for start in sorted(blocks):
         lines.extend(emit_block(blocks[start]))
     lines += ["  default:",
-              "    /* unreached address: data executed as code, or a gap */",
+              "    /* address not a known block start: data executed as code, an",
+              "       untranslated target, or a code/data-separation gap (§3.3) */",
               "    trap_pc(pc);",
               "  }",
               "}"]

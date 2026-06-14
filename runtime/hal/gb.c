@@ -9,10 +9,41 @@ const uint8_t *g_rom;
 uint32_t g_rom_len;
 
 extern uint8_t io[];
+extern uint8_t ie_reg;
+
+uint32_t g_traps;
+uint16_t g_last_trap_pc;
+uint8_t  g_last_trap_bank;
 
 void cpu_stop(void)        { /* TODO: CGB double-speed switch via KEY1 ($FF4D) */ }
-void trap(void)            { /* TODO: surface un-translated opcode to JS console */ }
-void trap_pc(uint16_t pc)  { (void)pc; /* TODO: un-translated address */ }
+void trap(void)            { g_traps++; }
+void trap_pc(uint16_t pc)  { g_traps++; g_last_trap_pc = pc; g_last_trap_bank = cpu.rom_bank;
+                             cpu.halted = 1; /* stop cleanly: pc didn't advance here */ }
+
+/* Execution entered HRAM ($FF80-$FFFE). The only code pokecrystal runs from HRAM is
+ * the OAM-DMA routine (hTransferShadowOAM): write the source page to rDMA, busy-wait,
+ * ret. It can't be statically recompiled (RAM code), so emulate it directly from the
+ * bytes the game copied there. The DMA effect happens on the rDMA ($FF46) write. */
+void hram_exec(uint16_t pc) {
+    if (pc == 0xFF80) {
+        uint8_t page = bus_read(0xFF81);   /* immediate of `ld a, HIGH(wShadowOAM)` */
+        bus_write(0xFF46, page);           /* perform the OAM DMA copy */
+        cpu.a = 0;                         /* a == 0 after the dec-to-zero wait loop */
+        cpu.cycles += 160;                 /* routine duration (approx) */
+        cpu.pc = pop16();                  /* ret */
+        return;
+    }
+    trap_pc(pc);                           /* any other HRAM execution is unexpected */
+}
+
+/* --- debug surface (read CPU/trap state from JS) --------------------------- */
+uint16_t gb_dbg_pc(void)      { return cpu.pc; }
+uint8_t  gb_dbg_bank(void)    { return cpu.rom_bank; }
+uint8_t  gb_dbg_halted(void)  { return (uint8_t)cpu.halted; }
+uint8_t  gb_dbg_lcdc(void)    { return io[0x40]; }
+uint32_t gb_dbg_traps(void)   { return g_traps; }
+uint16_t gb_dbg_trap_pc(void) { return g_last_trap_pc; }
+uint8_t  gb_dbg_trap_bank(void){ return g_last_trap_bank; }
 
 void gb_init(const uint8_t *rom, uint32_t rom_len) {
     g_rom = rom; g_rom_len = rom_len;
@@ -21,7 +52,16 @@ void gb_init(const uint8_t *rom, uint32_t rom_len) {
     cpu.sp = 0xFFFE;
     cpu.rom_bank = 1;
     cpu.a = 0x11;             /* CGB: A=0x11 at boot handoff */
-    /* TODO: full post-BIOS register/IO state for CGB. */
+
+    /* Post-boot hardware state, as the CGB boot ROM leaves it. Crucially the LCD
+     * is ON and the PPU is running (LY counting) — Init.wait polls rLY for VBlank
+     * before it turns the LCD off, so a zeroed LCDC would deadlock the boot. */
+    io[0x40] = 0x91;          /* LCDC: LCD on, BG on, tile data $8000 */
+    io[0x41] = 0x85;          /* STAT */
+    io[0x47] = 0xFC;          /* BGP (DMG-compat) */
+    io[0x48] = 0xFF;          /* OBP0 */
+    io[0x49] = 0xFF;          /* OBP1 */
+    ie_reg   = 0x00;
 }
 
 /* ------------------------------------------------------------------ HAL sync */
@@ -57,7 +97,8 @@ void gb_run_frame(void) {
     g_yield = 0;
     g_deadline = cpu.cycles + 70224;        /* T-cycles per frame */
 
-    while (!g_yield) {
+    uint32_t guard = 0;                     /* hard cap: never spin a frame forever */
+    while (!g_yield && guard++ < 4000000) {
         if (cpu.ime && int_pending()) {
             cpu.halted = 0;
             int_service();                  /* push pc, jump to vector, clear IME */
@@ -67,20 +108,10 @@ void gb_run_frame(void) {
             hal_catch_up();
             if (int_pending()) cpu.halted = 0;
         } else {
-            rom_exec();                     /* runs until ret-to-top, halt, or yield */
+            rom_dispatch(cpu.pc);           /* run exactly one block, advance cpu.pc */
             hal_catch_up();
         }
     }
     ppu_take_frame();                       /* consume the frame latch */
 }
 
-void rom_call(uint8_t bank, uint16_t addr) {
-    /* Trampoline: switch ROM bank, dispatch, restore. Wired once banks are emitted. */
-    uint8_t prev = cpu.rom_bank;
-    cpu.rom_bank = bank;
-    cpu.pc = addr;
-    bank_00(addr);   /* TODO: dispatch to bank_<bank> via generated table */
-    cpu.rom_bank = prev;
-}
-
-void rom_exec(void) { bank_00(cpu.pc); }

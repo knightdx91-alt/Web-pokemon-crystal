@@ -64,10 +64,19 @@ def disassemble_bank(rom: bytes, bank: int, syms: SymbolTable) -> dict[int, Bloc
                 break
             if ins.is_ret:
                 break
-            if ins.is_jump or ins.is_call:
+            if ins.is_call:
+                # In the per-block-return model a call hands control back to the
+                # trampoline, which later resumes at the return address — so that
+                # address MUST be its own block. End this block and seed both.
                 if ins.target is not None and lo <= ins.target < hi:
                     blk.succ.append(ins.target); worklist.append(ins.target)
-                # conditional jump/call falls through to nxt
+                if lo <= nxt < hi:
+                    blk.succ.append(nxt); worklist.append(nxt)
+                break
+            if ins.is_jump:
+                if ins.target is not None and lo <= ins.target < hi:
+                    blk.succ.append(ins.target); worklist.append(ins.target)
+                # conditional jump falls through to nxt inline (same block)
             if nxt in seeds or nxt in seen:
                 blk.succ.append(nxt); worklist.append(nxt)
                 break
