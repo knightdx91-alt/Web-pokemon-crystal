@@ -110,8 +110,31 @@ executing end-to-end through real hardware before widening coverage.
     music. Parsing that garbage flows through **mis-decoded data regions** (e.g. a
     spurious `call nc,$4111` at `3a:6337` from data decoded as code) that re-enter the
     loop terminator **without the `cp`**, so `wCurChannel` overruns to 14 and sticks.
-- 🧪 **Verified facts (debug: `gb_dbg_cp8_*`, `gb_dbg_f/_a` + a temporary patch in
-  block `3a:4102`, predecessor tracing):**
+- ✅✅ **MAJOR FIX (conditional ret) — boots into the intro now.** Root-caused via a
+  per-block `wCurChannel`/`cpu.f` step trace (`gb_dbg_trace_aux`): the disassembler
+  treated a CONDITIONAL `ret z/nz/nc/c` like an unconditional one — it ended the
+  block without disassembling the fall-through, and the emitter's C `switch` then
+  fell through to the next case, SILENTLY SKIPPING the instructions between the
+  conditional ret and the next block. `_UpdateSound` (`3a:405c`) is exactly
+  `... ret z; xor a; ld [wCurChannel],a; ...`; the reset after `ret z` was dropped,
+  so the sound channel loop overran (the whole-session black-screen bug).
+  - Fix in `disasm.py`: only UNCONDITIONAL ret/reti ends a block; conditional ret
+    continues inline (emit.py already emits the guarded return).
+  - Result on the real ROM: **zero traps, sound runs cleanly once/frame, the boot
+    reaches the intro CUTSCENE** (hVBlank cutscene path), runs the graphics-request
+    system (HDMA fires, BG tilemap written).
+- 🛠 **Frame-timing improved:** `gb_run_frame` now yields on a full-frame cycle
+  deadline (70224 T-cycles) instead of the instant LY hits 144, so the VBlank handler
+  runs WITHIN the frame near LY=144 (the game relies on this).
+- ⏳ **Current blocker — VBlank interrupt-timing drift.** Boot waits in
+  `Request2bpp.wait` for `wRequested2bppSize→0`, cleared by `Serve2bppRequest` in the
+  VBlank handler — but that only serves during `LY 144-145`, and we measure it
+  entering at **LY=146** (`gb_dbg_serve_ly`), so it returns early and never copies
+  (`gb_dbg_serve_copies=0`). The handler reaches `Serve2bppRequest` ~2 scanlines late
+  because our per-block stepping services the VBlank IRQ a bit after LY=144 and the
+  preamble adds more. Fix = tighter interrupt-timing fidelity (service VBlank closer
+  to the LY 143→144 edge / finer PPU stepping during the handler).
+- 🧪 **Earlier verified facts (debug: `gb_dbg_cp8_*`, predecessor tracing):**
   - The loop terminator `cp 8; jp nz` at `3a:410f` is correct: when it sees `a==8`
     it ALWAYS falls through (exits) — `cpu.f=0xC0` (Z set), `JUMPED=0 EXITED=1`.
   - `3a:406b` (loop body) is entered ONLY from `3a:4102` — there is NO wild jump in.

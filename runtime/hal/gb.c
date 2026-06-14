@@ -43,11 +43,17 @@ void hram_exec(uint16_t pc) {
 static uint32_t g_trace[TRACE_N];     /* bank<<16 | pc */
 static uint32_t g_trace_aux[TRACE_N]; /* wCurChannel<<8 | cpu.f, sampled per block */
 static uint32_t g_trace_i;
+int g_serve_ly = -1; uint32_t g_serve_copies = 0;   /* debug: Serve2bppRequest window */
 static void trace_push(uint32_t v) {
     g_trace[g_trace_i & (TRACE_N - 1)] = v;
     g_trace_aux[g_trace_i & (TRACE_N - 1)] = (bus_read(0xC299) << 8) | cpu.f;
     g_trace_i++;
+    uint16_t pc = v & 0xFFFF;
+    if (pc == 0x1769) g_serve_ly = io[0x44];   /* LY when Serve2bppRequest entered */
+    if (pc == 0x177d) g_serve_copies++;        /* _Serve2bppRequest (the real copy) ran */
 }
+int      gb_dbg_serve_ly(void) { return g_serve_ly; }
+uint32_t gb_dbg_serve_copies(void) { return g_serve_copies; }
 uint32_t gb_dbg_trace_head(void) { return g_trace_i; }
 uint32_t gb_dbg_trace_at(uint32_t i) { return g_trace[i & (TRACE_N - 1)]; }
 uint32_t gb_dbg_trace_aux(uint32_t i) { return g_trace_aux[i & (TRACE_N - 1)]; }
@@ -104,7 +110,12 @@ void hal_catch_up(void) {
         apu_step(dt);
         timer_step(dt);
     }
-    if (ppu_frame_pending() || cpu.cycles >= g_deadline)
+    /* Yield only on the full-frame cycle deadline, NOT the instant LY hits 144.
+     * Running a whole frame's cycles per gb_run_frame means the VBlank interrupt is
+     * serviced WITHIN the frame while LY is still ~144 — which the game relies on
+     * (e.g. Serve2bppRequest only serves during LY 144-145). Yielding at the VBlank
+     * latch instead pushed the handler into the next call at a drifted LY. */
+    if (cpu.cycles >= g_deadline)
         g_yield = 1;
 }
 
