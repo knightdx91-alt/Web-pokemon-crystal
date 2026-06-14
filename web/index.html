@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pokémon Crystal — WebAssembly</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0b10; color: #cdd; font-family: system-ui, sans-serif; }
+  main { display: grid; place-items: center; height: 100%; gap: 12px; }
+  canvas { image-rendering: pixelated; width: 480px; height: 432px; background: #081820;
+           border: 2px solid #294; border-radius: 6px; }
+  .hint { font-size: 13px; opacity: .7; }
+</style>
+</head>
+<body>
+<main>
+  <canvas id="screen" width="160" height="144"></canvas>
+  <div class="hint">Arrows = D-pad · Z = A · X = B · Enter = Start · Shift = Select</div>
+</main>
+<script type="module" src="./main.js"></script>
+</body>
+</html>

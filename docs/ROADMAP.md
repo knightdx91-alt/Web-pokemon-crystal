@@ -1,0 +1,45 @@
+# Roadmap
+
+Static recompilation of pokecrystal → WASM, built **vertically**: get one bank
+executing end-to-end through real hardware before widening coverage.
+
+## Phase 0 — Architecture & scaffold ✅ (current)
+- Repo structure, build pipeline, design docs.
+- Recompiler skeleton: `.sym` parser ✅, SM83 decoder ✅, recursive disasm ✅,
+  translator (representative subset) ✅, C emitter ✅, orchestrator ✅.
+- HAL interfaces + skeletons: bus/MBC3, PPU, APU, timer/IRQ/input, ALU, entrypoints.
+- Web frontend skeleton.
+
+## Phase 1 — Make the pipeline run for real
+1. Install `rgbds` in the build env; `make sources rom` to produce gbc + sym + map.
+2. `make recompile CODE_BANKS=0`; inspect `generated/bank_00.c` against a known
+   disassembly of bank 0 (home section). Fix decoder/translator gaps surfaced as
+   `/* TODO */ trap()`.
+3. Complete `translate.py` coverage: every opcode group, no traps in bank 0.
+4. Wire the frame loop in `gb.c` (cycle accounting + HAL catch-up + `int_service`).
+
+## Phase 2 — Hardware fidelity
+- PPU scanline renderer: BG + window + sprites, CGB VRAM-bank attributes, palette RAM,
+  8×16 sprites, priority. STAT/LY/LYC timing the game polls.
+- MBC3 full: RAM enable, RTC latch + registers (Crystal uses the clock).
+- OAM DMA, HDMA (CGB), double-speed mode.
+- APU: 4 channels + frame sequencer → PCM.
+- Correct joypad bit mapping.
+
+## Phase 3 — Boot to title
+- Translate all code banks (`CODE_BANKS=0-…`). Resolve banked-call trampoline
+  (`rom_call` → generated per-bank dispatch table).
+- Get past the copyright/intro to the title screen, then to overworld.
+
+## Phase 4 — Validation & feel
+- Determinism harness: hash framebuffer at known frames against a reference emulator
+  trace driven by the same input script (ARCHITECTURE.md §7).
+- Save (SRAM) persistence via browser storage. Audio latency tuning.
+- Performance pass; gamepad; mobile touch controls.
+
+## Known risks / open questions
+- **Code/data separation** in untranslated banks — recursive disasm from `.sym` should
+  cover it, but jump-table-only targets may need manual seeds.
+- **Banked-call performance**: trampoline per farcall vs. a flattened dispatch.
+- **`stop`/double-speed** timing edge cases.
+- **Asset/legal**: builds stay local; nothing copyrighted is committed.

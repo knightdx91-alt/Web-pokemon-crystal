@@ -1,0 +1,17 @@
+# upstream sources (fetched at the pinned commit, never committed)
+/vendor/
+
+# build artifacts
+/build/rom/
+/generated/*.c
+/web/pokecrystal.wasm
+
+# never commit copyrighted ROM/assets (see README legal note)
+*.gbc
+*.gb
+*.sym
+*.map
+
+__pycache__/
+*.pyc
+.DS_Store
