@@ -11,7 +11,13 @@ executing end-to-end through real hardware before widening coverage.
 - Web frontend skeleton.
 
 ## Phase 1 — Make the pipeline run for real
-1. Install `rgbds` in the build env; `make sources rom` to produce gbc + sym + map.
+1. ✅ **rgbds v1.0.1 builds from source** (build/ scripts) and `make sources rom`
+   produces a **byte-perfect ROM** — SHA1 `f4cd194b…` matches upstream `roms.sha1`.
+   `make recompile CODE_BANKS=0` translates real **bank 0: 1200 blocks, zero genuine
+   opcode gaps** (the only traps are undefined opcodes reached by over-walking into
+   data — a code/data-separation refinement, item 3). The recompiled bank compiles
+   under wasm32 and the full runtime **runs 60 frames without hanging** in Node.
+   Data banks are NOT emitted as C — ROM is served from `g_rom` at runtime.
 2. ✅ **Translator coverage complete**: all 500 defined opcodes translate with zero
    `trap()` (`make test` / `tools/recompiler/coverage.py`). ALU/CB/rotate/DAA helpers
    implemented in `runtime/hal/alu.c`; all HAL compiles under `--target=wasm32`.

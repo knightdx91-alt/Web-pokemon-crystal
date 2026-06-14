@@ -219,4 +219,5 @@ void ppu_step(uint32_t tcycles) {
     }
 }
 
+int ppu_frame_pending(void) { return frame_latch; }            /* peek, non-consuming */
 int ppu_take_frame(void) { int f = frame_latch; frame_latch = 0; return f; }

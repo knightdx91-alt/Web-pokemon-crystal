@@ -28,41 +28,50 @@ void gb_init(const uint8_t *rom, uint32_t rom_len) {
 /* Advance the PPU/APU/timers to the CPU's current cycle count. Called from the
  * generated dispatch (emit.py) at every block boundary, and from the frame loop.
  * Device-only: it never services interrupts (that must happen at a clean top-level
- * boundary, not mid-block) — it just lets devices raise IF. */
+ * boundary, not mid-block). It raises g_yield when the frame is done or the
+ * per-frame cycle deadline passes, which makes the generated dispatch return so
+ * the frame loop regains control (the emulated call stack persists in cpu.sp). */
 static uint64_t synced;
+int g_yield;
+static uint64_t g_deadline;
+
+int ppu_frame_pending(void);   /* ppu.c */
 
 void hal_catch_up(void) {
     uint64_t now = cpu.cycles;
-    if (now <= synced) return;
-    uint32_t dt = (uint32_t)(now - synced);
-    synced = now;
-    ppu_step(dt);
-    apu_step(dt);
-    timer_step(dt);
+    if (now > synced) {
+        uint32_t dt = (uint32_t)(now - synced);
+        synced = now;
+        ppu_step(dt);
+        apu_step(dt);
+        timer_step(dt);
+    }
+    if (ppu_frame_pending() || cpu.cycles >= g_deadline)
+        g_yield = 1;
 }
 
 /* Run one frame: drive translated code (servicing interrupts at top level and
- * honouring HALT) until the PPU has emitted a full frame of scanlines. A cycle
- * budget guards against a runaway frame if the game never reaches VBlank. */
+ * honouring HALT) until the PPU latches a frame, or a one-frame cycle deadline
+ * passes (covers the LCD-off case where no VBlank is produced). */
 void gb_run_frame(void) {
-    uint64_t budget = cpu.cycles + 70224ull * 4;   /* ~4 frames of safety */
+    g_yield = 0;
+    g_deadline = cpu.cycles + 70224;        /* T-cycles per frame */
 
-    while (cpu.cycles < budget) {
+    while (!g_yield) {
         if (cpu.ime && int_pending()) {
             cpu.halted = 0;
-            int_service();          /* push pc, jump to vector, clear IME */
+            int_service();                  /* push pc, jump to vector, clear IME */
         }
         if (cpu.halted) {
-            /* nothing to execute: tick hardware forward to raise the next IRQ */
-            cpu.cycles += 4;
+            cpu.cycles += 4;                /* idle: tick hardware to raise the IRQ */
             hal_catch_up();
             if (int_pending()) cpu.halted = 0;
         } else {
-            rom_exec();             /* run blocks from cpu.pc until ret-to-top/halt */
+            rom_exec();                     /* runs until ret-to-top, halt, or yield */
             hal_catch_up();
         }
-        if (ppu_take_frame()) return;
     }
+    ppu_take_frame();                       /* consume the frame latch */
 }
 
 void rom_call(uint8_t bank, uint16_t addr) {

@@ -21,6 +21,10 @@ void bank_00(uint16_t pc);
 
 uint8_t joypad_read(void);  /* $FF00, runtime/hal/timer_irq_input.c */
 
+/* set by hal_catch_up when the frame loop should reclaim control; the generated
+ * dispatch checks it at each block boundary and returns (cpu.pc is checkpointed). */
+extern int g_yield;
+
 /* loud failure for un-translated addresses/opcodes (ARCHITECTURE.md §3.3) */
 void trap(void);
 void trap_pc(uint16_t pc);

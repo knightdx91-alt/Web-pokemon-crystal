@@ -43,7 +43,7 @@ def _emit_branch(ins: Insn, lines: list[str]) -> None:
     elif m in ("ret", "reti"):
         if m == "reti":
             lines.append("    cpu.ime = 1;")
-        lines.append("    " + guarded("pc = pop16(); return; /* return to caller dispatcher */"))
+        lines.append("    " + guarded("cpu.pc = pop16(); return; /* return to caller dispatcher */"))
 
 
 def emit_block(blk: Block) -> list[str]:
@@ -55,6 +55,9 @@ def emit_block(blk: Block) -> list[str]:
     for ins in blk.insns:
         if ins.is_jump or ins.is_call or ins.is_ret:
             _emit_branch(ins, out)
+        elif ins.mnemonic == "halt":
+            # suspend until interrupt; save resume pc and yield to the frame loop
+            out.append(f"    cpu.halted = 1; cpu.pc = 0x{ins.addr + ins.length:04x}; return;")
         else:
             for c in translate(ins):
                 out.append(f"    {c}")
@@ -73,7 +76,9 @@ def emit_bank(bank: int, blocks: dict[int, Block]) -> str:
              "",
              f"void bank_{bank:02x}(uint16_t pc) {{",
              "dispatch:",
+             "  cpu.pc = pc;             /* checkpoint for resume on yield */",
              "  hal_catch_up();          /* advance PPU/APU/timers to cpu.cycles */",
+             "  if (g_yield) return;     /* frame done / deadline: hand back to loop */",
              "  switch (pc) {"]
     for start in sorted(blocks):
         lines.extend(emit_block(blocks[start]))

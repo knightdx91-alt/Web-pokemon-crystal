@@ -13,12 +13,10 @@ from disasm import disassemble_bank
 from emit import emit_bank
 
 
-def emit_data_bank(rom: bytes, bank: int) -> str:
-    start = bank * 0x4000
-    chunk = rom[start:start + 0x4000]
-    body = ",".join(str(b) for b in chunk)
-    return (f"/* bank {bank:02x} data */\n#include <stdint.h>\n"
-            f"const uint8_t rom_bank_{bank:02x}[0x4000] = {{{body}}};\n")
+# NOTE: ROM bytes are provided to the runtime at load time via gb_init(rom,len) and
+# read through bus_read()/g_rom, so we deliberately do NOT emit data banks as C
+# arrays — that would duplicate the entire ROM inside the .wasm. Only executable
+# banks become C (dispatch functions); everything else stays data in g_rom.
 
 
 def main() -> None:
@@ -43,20 +41,22 @@ def main() -> None:
             code_banks.add(int(part))
 
     print(f"ROM: {len(rom)} bytes, {nbanks} banks; {len(syms.symbols)} symbols")
-    print(f"Translating banks as CODE: {sorted(code_banks)}; rest emitted as DATA.")
+    print(f"Translating banks as CODE: {sorted(code_banks)}; ROM data served from g_rom.")
 
-    for bank in range(nbanks):
-        if bank in code_banks:
-            blocks = disassemble_bank(rom, bank, syms)
-            src = emit_bank(bank, blocks)
-            print(f"  bank {bank:02x}: {len(blocks)} blocks")
-        else:
-            src = emit_data_bank(rom, bank)
+    written = 0
+    for bank in sorted(code_banks):
+        if bank >= nbanks:
+            continue
+        blocks = disassemble_bank(rom, bank, syms)
+        src = emit_bank(bank, blocks)
         with open(os.path.join(args.out, f"bank_{bank:02x}.c"), "w") as fh:
             fh.write(src)
+        written += 1
+        print(f"  bank {bank:02x}: {len(blocks)} blocks")
 
-    print(f"Wrote {nbanks} bank files to {args.out}/")
-    print("NOTE: incremental — broaden --code-banks as translate.py coverage grows.")
+    print(f"Wrote {written} code-bank file(s) to {args.out}/ "
+          f"(data stays in g_rom, provided at runtime).")
+    print("NOTE: incremental — broaden --code-banks as coverage/data-separation grows.")
 
 
 if __name__ == "__main__":
