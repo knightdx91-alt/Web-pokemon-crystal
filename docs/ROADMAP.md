@@ -80,9 +80,21 @@ executing end-to-end through real hardware before widening coverage.
   mistranslation — the sound-engine loop is a **HAL / timing / banking** issue, not a
   bad opcode. Suspects: interrupt/IME timing, ROM-bank state during the banked music
   read (`GetMusicByte`), or a hardware register the engine polls.
-- ⏳ **Next:** instrument the sound loop's banked reads / channel pointers vs. the
-  source to find why `_UpdateSound` never returns; then jump-table following to widen
-  translated coverage cleanly.
+- 🔬 **Sound loop narrowed precisely** (via `gb_dbg_read` WRAM accessor): the main
+  thread is permanently halted in `DelayFrame` because the VBlank handler's
+  `_UpdateSound` never clears `wVBlankOccurred` — it never returns. State dump:
+  `wMusicPlaying=1` but all 8 channel structs are zero, and `wCurChannel=14` — the
+  per-channel loop (`cp NUM_CHANNELS; jp nz, .loop`, bound = 8) has **overrun past
+  channel 8** and is parsing uninitialized WRAM as a music channel (addr 0 → reads
+  ROM/garbage), looping forever in ParseMusic. Opcodes are proven correct, so this is
+  state corruption / timing, not a bad instruction. Inconsistency (`wMusicPlaying=1`
+  with empty channels) points at the music-start path or an interrupt/IME-timing
+  issue corrupting `wCurChannel`/channel flags.
+- ⏳ **Next leads:** (a) trace `wCurChannel` + channel-on bit *within* one
+  `_UpdateSound` call to catch the overrun instant; (b) audit EI/IME 1-instruction
+  delay and interrupt-at-block-boundary timing (not covered by SingleStepTests);
+  (c) verify the music-start path (PlayMusic/LoadChannel) populated channels. Then
+  jump-table following to widen translated coverage cleanly.
 - Practical note: translating all 128 banks → ~47 MB C / 24 MB wasm / ~4 min build.
   Targeted sets (e.g. `CODE_BANKS=0-7,58,66`) build in ~30s for fast iteration.
   Production will translate only code-bearing banks + jump-table-driven discovery.

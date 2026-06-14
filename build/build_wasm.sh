@@ -13,7 +13,7 @@ EXPORTS=(gb_init gb_run_frame gb_set_buttons gb_framebuffer
          gb_dbg_traps gb_dbg_trap_pc gb_dbg_trap_bank
          gb_dbg_trace_head gb_dbg_trace_at
          gb_dbg_io gb_dbg_bgpal gb_dbg_objpal gb_dbg_vram
-         gb_dbg_vramw gb_dbg_hdma)
+         gb_dbg_vramw gb_dbg_hdma gb_dbg_read)
 EXPORT_FLAGS=""
 for e in "${EXPORTS[@]}"; do EXPORT_FLAGS+=" -Wl,--export=$e"; done
 
