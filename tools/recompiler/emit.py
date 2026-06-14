@@ -19,56 +19,76 @@ from translate import translate
 _TAKEN_PENALTY = {"jr": 4, "jp": 4, "call": 12, "ret": 12}
 
 
-def _emit_branch(ins: Insn, lines: list[str]) -> None:
-    """Emit C for a control-flow instruction. Every taken path ends in `return;`,
-    handing control back to the trampoline with cpu.pc set."""
+def _cond_present(ins: Insn) -> bool:
+    return (bool(ins.operands) and isinstance(ins.operands[0], str)
+            and ins.operands[0] in ("nz", "z", "nc", "c"))
+
+
+def _unconditional_exit(ins: Insn) -> bool:
+    """True if this instruction always leaves the block (no fall-through path)."""
+    if ins.is_terminal:                       # unconditional jp/jr/ret/reti
+        return True
+    if ins.mnemonic == "rst":                 # unconditional call to a vector
+        return True
+    if ins.is_call and not _cond_present(ins):  # unconditional call
+        return True
+    return False
+
+
+def _emit_branch(ins: Insn, acc: int, lines: list[str]) -> None:
+    """Emit C for a control-flow instruction. `acc` is the T-cycles accumulated up to
+    AND INCLUDING this instruction (each instruction's base = its not-taken cost), to
+    be charged on the path that EXITS here. A taken conditional also adds its penalty.
+    Charging at the exit (not up front) keeps cycles correct when a conditional ret/jp
+    exits a block early — vital for tight VBlank timing windows."""
     m = ins.mnemonic
     cond = None
     if ins.operands and isinstance(ins.operands[0], str) and ins.operands[0] in ("nz", "z", "nc", "c"):
         cond = {"nz": "!GET_FLAG(FLAG_Z)", "z": "GET_FLAG(FLAG_Z)",
                 "nc": "!GET_FLAG(FLAG_C)", "c": "GET_FLAG(FLAG_C)"}[ins.operands[0]]
-
-    pen = _TAKEN_PENALTY.get(m, 0) if cond else 0          # penalty only when conditional
-    tick = f"cpu.cycles += {pen}; " if pen else ""
+    pen = _TAKEN_PENALTY.get(m, 0) if cond else 0
+    charge = acc + pen   # cycles charged on the taken/exit path
 
     def guarded(body: str) -> str:
-        return f"if ({cond}) {{ {tick}{body} }}" if cond else body
+        return f"if ({cond}) {{ {body} }}" if cond else body
 
     if m in ("jp", "jr"):
         if ins.target is not None:
-            lines.append("    " + guarded(f"cpu.pc = 0x{ins.target:04x}; return;"))
-        else:  # jp hl (computed) — target resolved at runtime; trampoline routes it
-            lines.append("    cpu.pc = HL(); return;")
+            lines.append("    " + guarded(f"cpu.cycles += {charge}; cpu.pc = 0x{ins.target:04x}; return;"))
+        else:  # jp hl (computed) — always unconditional/terminal
+            lines.append(f"    cpu.cycles += {charge}; cpu.pc = HL(); return;")
     elif m == "call":
         ret = ins.addr + ins.length
         if ins.target is not None:
-            lines.append("    " + guarded(f"push16(0x{ret:04x}); cpu.pc = 0x{ins.target:04x}; return;"))
+            lines.append("    " + guarded(f"cpu.cycles += {charge}; push16(0x{ret:04x}); cpu.pc = 0x{ins.target:04x}; return;"))
     elif m == "rst":
-        lines.append(f"    push16(0x{ins.addr + ins.length:04x}); cpu.pc = 0x{ins.target:04x}; return;")
+        lines.append(f"    cpu.cycles += {charge}; push16(0x{ins.addr + ins.length:04x}); cpu.pc = 0x{ins.target:04x}; return;")
     elif m in ("ret", "reti"):
-        if m == "reti":
-            lines.append("    cpu.ime = 1;")
-        lines.append("    " + guarded("cpu.pc = pop16(); return;"))
+        body = ("cpu.ime = 1; " if m == "reti" else "") + f"cpu.cycles += {charge}; cpu.pc = pop16(); return;"
+        lines.append("    " + guarded(body))
 
 
 def emit_block(blk: Block) -> list[str]:
-    # Base T-cycles for the block charged up front; conditional-branch taken penalties
-    # are added inline by _emit_branch.
-    base = sum(ins.cycles for ins in blk.insns)
-    out = [f"  case 0x{blk.start:04x}:", f"    cpu.cycles += {base};"]
+    # Accumulate T-cycles and flush them at each exit point (instead of charging the
+    # whole block up front), so a mid-block conditional exit charges only what ran.
+    out = [f"  case 0x{blk.start:04x}:"]
+    acc = 0
     for ins in blk.insns:
+        acc += ins.cycles
         if ins.is_jump or ins.is_call or ins.is_ret:
-            _emit_branch(ins, out)
+            _emit_branch(ins, acc, out)
+            # not-taken path keeps `acc` (this insn's base already counted) and flows on
         elif ins.mnemonic == "halt":
-            # suspend until interrupt; save resume pc and hand back to the frame loop
-            out.append(f"    cpu.halted = 1; cpu.pc = 0x{ins.addr + ins.length:04x}; return;")
+            out.append(f"    cpu.cycles += {acc}; cpu.halted = 1; cpu.pc = 0x{ins.addr + ins.length:04x}; return;")
+            acc = 0
         else:
             for c in translate(ins):
                 out.append(f"    {c}")
-    # fall-through to the next address if the last instruction wasn't a transfer
+    # Emit the fall-through (not-taken / straight-line) exit unless the last
+    # instruction ALWAYS exits unconditionally (uncond jp/jr/ret/reti/call/rst).
     last = blk.insns[-1] if blk.insns else None
-    if last and not (last.is_terminal or last.is_ret):
-        out.append(f"    cpu.pc = 0x{last.addr + last.length:04x}; return;")
+    if last and not _unconditional_exit(last):
+        out.append(f"    cpu.cycles += {acc}; cpu.pc = 0x{last.addr + last.length:04x}; return;")
     return out
 
 
