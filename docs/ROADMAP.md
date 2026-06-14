@@ -110,7 +110,24 @@ executing end-to-end through real hardware before widening coverage.
     music. Parsing that garbage flows through **mis-decoded data regions** (e.g. a
     spurious `call nc,$4111` at `3a:6337` from data decoded as code) that re-enter the
     loop terminator **without the `cp`**, so `wCurChannel` overruns to 14 and sticks.
-- ✅✅ **MAJOR FIX (conditional ret) — boots into the intro now.** Root-caused via a
+- ✅✅✅ **MAJOR FIX #2 (cycle accuracy) — intro graphics load.** The conditional-ret
+  fix made blocks include the post-ret tail, but the emitter charged the whole block's
+  cycles up front, so an early `ret z`/`jr` over-charged for code that never ran
+  (~47% over on the VBlank preamble). That pushed `Serve2bppRequest` past its tight
+  `LY 144-145` window, so tiles never loaded. `emit.py` now charges cycles at each
+  EXIT point (`_unconditional_exit` handles a conditional ret/call as the last insn).
+  Result: VBlank preamble ~1016→716 cycles, `Serve2bppRequest` hits LY=145 and copies,
+  **tiles load (vramTiles 0→3000+), BG map fills, the 2bpp handshake completes**. The
+  BG tilemap renders real structured content (`tools/render_bg.mjs` → grayscale PNG).
+- ⏳ **Current blocker — CGB palettes never written → black screen.** The game loads
+  tiles and animates the intro (LCDC window toggling) but writes the CGB palette RAM
+  **zero times** (`gb_dbg_palw_bg/_obj = 0`), and `hCGBPalUpdate` stays 0, so
+  `ForceUpdateCGBPals` never copies `wBGPals2`→`rBGPD`. With palette RAM all zero the
+  renderer (CGB path) shows black even though the tile/map content is correct. Next:
+  find where the intro loads palettes (and sets `hCGBPalUpdate`) and why that code
+  doesn't run — likely another divergence, OR a pre-fade phase. Grayscale render
+  confirms the content is there; only color is missing.
+- ✅✅ **MAJOR FIX #1 (conditional ret) — boots into the intro now.** Root-caused via a
   per-block `wCurChannel`/`cpu.f` step trace (`gb_dbg_trace_aux`): the disassembler
   treated a CONDITIONAL `ret z/nz/nc/c` like an unconditional one — it ended the
   block without disassembling the fall-through, and the emitter's C `switch` then

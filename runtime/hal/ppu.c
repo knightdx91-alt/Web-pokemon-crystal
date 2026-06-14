@@ -32,7 +32,12 @@ static int window_line;         /* internal window line counter */
 const uint8_t *gb_framebuffer(void) { return framebuffer; }
 
 /* ---- palette RAM access (forwarded from bus.c) ------------------------------ */
+uint32_t g_palw_bg, g_palw_obj;            /* debug: palette RAM write counts */
+uint32_t gb_dbg_palw_bg(void)  { return g_palw_bg; }
+uint32_t gb_dbg_palw_obj(void) { return g_palw_obj; }
 void ppu_pal_write(uint16_t reg, uint8_t v) {
+    if (reg == 0x69) g_palw_bg++;
+    if (reg == 0x6B) g_palw_obj++;
     switch (reg) {
         case 0x68: bcps = v; break;
         case 0x69: bg_palram[bcps & 0x3F] = v;  if (bcps & 0x80) bcps = 0x80 | ((bcps + 1) & 0x3F); break;
