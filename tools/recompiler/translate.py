@@ -33,6 +33,28 @@ def _set_pair(dst: str, expr: str) -> str:
     return f"{_PAIR_SET[dst]}((uint16_t)({expr}));"
 
 
+# When True, immediates are read from memory at runtime (relative to cpu.pc) instead
+# of baked as constants. Used by the SingleStepTests harness (tools/optest) so one
+# compiled function can execute any instance of an opcode. Normal recompilation bakes.
+IMM_FROM_MEM = False
+
+
+def _i8(ins) -> str:
+    return "bus_read((uint16_t)(cpu.pc + 1))" if IMM_FROM_MEM else f"0x{ins.imm:02x}"
+
+
+def _i16(ins) -> str:
+    if IMM_FROM_MEM:
+        return ("(uint16_t)(bus_read((uint16_t)(cpu.pc + 1)) | "
+                "(bus_read((uint16_t)(cpu.pc + 2)) << 8))")
+    return f"0x{ins.imm:04x}"
+
+
+def _e8(ins) -> str:
+    """Signed 8-bit displacement (for sp_offset)."""
+    return "((int8_t)bus_read((uint16_t)(cpu.pc + 1)))" if IMM_FROM_MEM else f"{ins.imm}"
+
+
 def _is_imm(tok) -> bool:
     return isinstance(tok, str) and tok.startswith("$")
 
@@ -69,10 +91,10 @@ def translate(ins: Insn) -> list[str]:
             return [_set_r8("[hl]", _R8_GET[src])]
         # reg/[hl] <- imm8
         if (dst in _R8_SET or dst == "[hl]") and _is_imm(src) and ins.imm is not None:
-            return [_set_r8(dst, f"0x{ins.imm:02x}")]
+            return [_set_r8(dst, _i8(ins))]
         # pair <- imm16
         if dst in ("bc", "de", "hl", "sp") and _is_imm(src) and ins.imm is not None:
-            return [_set_pair(dst, f"0x{ins.imm:04x}")]
+            return [_set_pair(dst, _i16(ins))]
         # indirect via bc/de/hl+/hl-
         ind = {"[bc]": "BC()", "[de]": "DE()", "[hl+]": "HL()", "[hl-]": "HL()"}
         if dst in ind and src == "a":
@@ -92,26 +114,26 @@ def translate(ins: Insn) -> list[str]:
             return ["cpu.a = bus_read(0xFF00 + cpu.c);"]
         # absolute: ld [nn],a / ld a,[nn]  (operands are bracketed: "[$nnnn]")
         if dst == "a" and _is_mem(src) and ins.imm is not None:
-            return [f"cpu.a = bus_read(0x{ins.imm:04x});"]
+            return [f"cpu.a = bus_read({_i16(ins)});"]
         if _is_mem(dst) and src == "a" and ins.imm is not None:
-            return [f"bus_write(0x{ins.imm:04x}, cpu.a);"]
+            return [f"bus_write({_i16(ins)}, cpu.a);"]
         # ld [nn],sp
         if _is_mem(dst) and src == "sp" and ins.imm is not None:
-            return [f"bus_write(0x{ins.imm:04x}, cpu.sp & 0xFF);",
-                    f"bus_write(0x{ins.imm + 1:04x}, cpu.sp >> 8);"]
+            return [f"{{ uint16_t _a = {_i16(ins)};",
+                    "  bus_write(_a, cpu.sp & 0xFF); bus_write((uint16_t)(_a + 1), cpu.sp >> 8); }"]
         # ld sp,hl
         if dst == "sp" and src == "hl":
             return ["cpu.sp = HL();"]
         # ld hl,sp+e
         if dst == "hl" and isinstance(src, str) and src.startswith("sp+") and ins.imm is not None:
-            return [f"SET_HL(sp_offset({ins.imm}));"]   # sets H/C flags in helper
+            return [f"SET_HL(sp_offset({_e8(ins)}));"]   # sets H/C flags in helper
         return [f"/* TODO ld {dst},{src} */ trap();"]
 
     if m == "ldh" and ins.imm is not None:
         dst, _src = ops
         if dst == "a":
-            return [f"cpu.a = bus_read(0xFF00 + 0x{ins.imm:02x});"]
-        return [f"bus_write(0xFF00 + 0x{ins.imm:02x}, cpu.a);"]
+            return [f"cpu.a = bus_read((uint16_t)(0xFF00 + {_i8(ins)}));"]
+        return [f"bus_write((uint16_t)(0xFF00 + {_i8(ins)}), cpu.a);"]
 
     # --- inc / dec ----------------------------------------------------------------
     if m in ("inc", "dec") and len(ops) == 1 and ops[0] in _R8_GET:
@@ -130,7 +152,7 @@ def translate(ins: Insn) -> list[str]:
     if m == "add" and len(ops) == 2 and ops[0] == "hl":
         return [f"add16_hl({_PAIR_GET[ops[1]]});"]
     if m == "add" and len(ops) == 2 and ops[0] == "sp" and ins.imm is not None:
-        return [f"cpu.sp = sp_offset({ins.imm});"]
+        return [f"cpu.sp = sp_offset({_e8(ins)});"]
 
     # --- ALU a, r / a, n ----------------------------------------------------------
     if m in ("add", "adc", "sub", "sbc", "and", "or", "xor", "cp") and len(ops) == 1:
@@ -138,7 +160,7 @@ def translate(ins: Insn) -> list[str]:
         if src in _R8_GET:
             rhs = _R8_GET[src]
         elif _is_imm(src) and ins.imm is not None:
-            rhs = f"0x{ins.imm:02x}"
+            rhs = _i8(ins)
         else:
             return [f"/* TODO alu {m} {src} */ trap();"]
         return [f"alu_{m}({rhs});"]

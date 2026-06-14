@@ -1,5 +1,5 @@
 # web-pokemon-crystal — pipeline orchestration. See ARCHITECTURE.md §6.
-.PHONY: sources rom recompile wasm serve clean test
+.PHONY: sources rom recompile wasm serve clean test optest
 
 sources:   ; bash build/fetch_sources.sh
 rom:       ; bash build/build_rom.sh
@@ -14,6 +14,12 @@ test:
 	  clang --target=wasm32 -nostdlib -ffreestanding -Iruntime/include -fsyntax-only $$f || exit 1; \
 	done
 	@echo "OK: opcode coverage clean, HAL compiles"
+
+# SingleStepTests instruction-correctness sweep (needs network on first run to fetch
+# the test vectors; cached in /tmp/sm83 afterwards).
+optest:
+	bash tools/optest/build_optest.sh
+	node tools/optest/optest.mjs
 
 clean:
 	rm -rf generated/*.c build/rom web/pokecrystal.wasm

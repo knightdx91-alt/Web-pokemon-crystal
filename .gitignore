@@ -5,6 +5,8 @@
 /build/rom/
 /generated/*.c
 /web/pokecrystal.wasm
+/tools/optest/optest_gen.c
+/tools/optest/optest.wasm
 
 # never commit copyrighted ROM/assets (see README legal note)
 *.gbc

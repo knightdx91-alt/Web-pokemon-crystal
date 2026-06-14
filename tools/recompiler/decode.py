@@ -105,7 +105,7 @@ def _decode(buf: bytes, i: int, base_addr: int) -> Insn:
     # --- x = 0 : misc / control / 16-bit & 8-bit loads / inc-dec / rot-a ----------
     if x == 0:
         if op == 0x00: return Insn(a, 1, "nop")
-        if op == 0x10: return Insn(a, 2, "stop")
+        if op == 0x10: return Insn(a, 1, "stop")   # 1-byte; the padding 00 runs as nop
         if op == 0x76: return Insn(a, 1, "halt", is_terminal=False)
         if op == 0x08: return Insn(a, 3, "ld", ("[$%04x]" % _imm16(buf, i), "sp"), imm=_imm16(buf, i))
         if op == 0x18:  # jr e

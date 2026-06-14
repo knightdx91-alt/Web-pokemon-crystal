@@ -72,11 +72,17 @@ executing end-to-end through real hardware before widening coverage.
   music pointer / duration counter from a subtle instruction mistranslation.
   - Implemented CGB **HDMA/VDMA** ($FF51-$FF55) + **OAM DMA** so graphics CAN load
     once the sound loop is fixed.
-- ⏳ **Next (highest value): per-instruction reference diff.** Build/compile a known-
-  good GB emulator, run the same ROM, and diff CPU+memory state per step to pin the
-  first divergence inside `_UpdateSound`. Manual tracing has localized it to the
-  sound parse; ground truth is needed to find the exact opcode. Then jump-table
-  following to widen translated coverage cleanly.
+- ✅ **Instruction semantics VALIDATED** against SingleStepTests (sm83), `make optest`
+  (`tools/optest/`): a generated single-instruction executor reuses the real
+  `translate.py` (immediates-from-memory mode), compiled to wasm, run over all
+  256 base + 256 CB opcodes × 1000 vectors each. Result: **every defined opcode
+  passes** (fixed STOP to a 1-byte advance). This conclusively rules out instruction
+  mistranslation — the sound-engine loop is a **HAL / timing / banking** issue, not a
+  bad opcode. Suspects: interrupt/IME timing, ROM-bank state during the banked music
+  read (`GetMusicByte`), or a hardware register the engine polls.
+- ⏳ **Next:** instrument the sound loop's banked reads / channel pointers vs. the
+  source to find why `_UpdateSound` never returns; then jump-table following to widen
+  translated coverage cleanly.
 - Practical note: translating all 128 banks → ~47 MB C / 24 MB wasm / ~4 min build.
   Targeted sets (e.g. `CODE_BANKS=0-7,58,66`) build in ~30s for fast iteration.
   Production will translate only code-bearing banks + jump-table-driven discovery.
