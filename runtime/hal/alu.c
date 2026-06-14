@@ -38,10 +38,14 @@ void alu_sbc(uint8_t v) {
 void alu_and(uint8_t v) { cpu.a &= v; cpu.f = (cpu.a == 0 ? FLAG_Z : 0) | FLAG_H; }
 void alu_or(uint8_t v)  { cpu.a |= v; cpu.f = (cpu.a == 0 ? FLAG_Z : 0); }
 void alu_xor(uint8_t v) { cpu.a ^= v; cpu.f = (cpu.a == 0 ? FLAG_Z : 0); }
+uint8_t g_cp8[512]; uint32_t g_cp8_n;   /* debug: capture cpu.a at every `cp 8` */
 void alu_cp(uint8_t v) {
+    if (v == 8) g_cp8[g_cp8_n++ & 511] = cpu.a;
     SET_FLAG(FLAG_Z, cpu.a == v); SET_FLAG(FLAG_N, 1);
     SET_FLAG(FLAG_H, (cpu.a & 0xF) < (v & 0xF)); SET_FLAG(FLAG_C, cpu.a < v);
 }
+uint32_t gb_dbg_cp8_n(void) { return g_cp8_n; }
+uint8_t  gb_dbg_cp8_at(uint32_t i) { return g_cp8[i & 511]; }
 
 /* ------------------------------------------------------------ 16-bit / SP+e */
 void add16_hl(uint16_t v) {

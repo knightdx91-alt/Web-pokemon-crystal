@@ -101,9 +101,20 @@ executing end-to-end through real hardware before widening coverage.
   `wMusicPlaying=1` and a channel enabled = inconsistent state. The loop terminator
   (`cp NUM_CHANNELS; jp nz` at `3a:410f`) and its generated C are verified correct, so
   the bug is upstream: a channel got `SOUND_CHANNEL_ON` set without a valid pointer.
-- ⏳ **Next:** watch when `SOUND_CHANNEL_ON` / `wMusicPlaying` get set during boot
-  (the music-init / `PlayMusic` path) to find what enables a channel with addr=0.
-  Candidate: an interrupt/timing edge or the sound-init sequence running out of order.
+- 🧩 **Refined to TWO coupled causes** (debug: `gb_dbg_set_watch`, `gb_dbg_cp8_*`):
+  - The STOP-length fix (optest work) corrected bank-0x3a disassembly: for the first
+    ~30 frames (channels off) the channel loop now stops cleanly at 8 (verified: cp-8
+    sees `cpu.a` 1..8, and pc rests at `DelayFrame.halt`).
+  - But once the game enables a channel, it has **music address = 0** (the music-start
+    path didn't populate the pointer) → `_LoadMusicByte` reads ROM `$0000` as garbage
+    music. Parsing that garbage flows through **mis-decoded data regions** (e.g. a
+    spurious `call nc,$4111` at `3a:6337` from data decoded as code) that re-enter the
+    loop terminator **without the `cp`**, so `wCurChannel` overruns to 14 and sticks.
+- ⏳ **Next (two threads):** (1) trace the music-start (`PlayMusic`/`LoadChannel`/song
+  header read + its bank switch) to find why the channel pointer stays 0; (2)
+  jump-table / code-data separation so garbage data isn't decoded as code and can't
+  create spurious entry points. Either alone may unblock boot; both are needed for
+  correctness.
 - Practical note: translating all 128 banks → ~47 MB C / 24 MB wasm / ~4 min build.
   Targeted sets (e.g. `CODE_BANKS=0-7,58,66`) build in ~30s for fast iteration.
   Production will translate only code-bearing banks + jump-table-driven discovery.
