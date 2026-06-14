@@ -110,11 +110,22 @@ executing end-to-end through real hardware before widening coverage.
     music. Parsing that garbage flows through **mis-decoded data regions** (e.g. a
     spurious `call nc,$4111` at `3a:6337` from data decoded as code) that re-enter the
     loop terminator **without the `cp`**, so `wCurChannel` overruns to 14 and sticks.
-- ⏳ **Next (two threads):** (1) trace the music-start (`PlayMusic`/`LoadChannel`/song
-  header read + its bank switch) to find why the channel pointer stays 0; (2)
-  jump-table / code-data separation so garbage data isn't decoded as code and can't
-  create spurious entry points. Either alone may unblock boot; both are needed for
-  correctness.
+- 🧪 **Verified facts (debug: `gb_dbg_cp8_*`, `gb_dbg_f/_a` + a temporary patch in
+  block `3a:4102`, predecessor tracing):**
+  - The loop terminator `cp 8; jp nz` at `3a:410f` is correct: when it sees `a==8`
+    it ALWAYS falls through (exits) — `cpu.f=0xC0` (Z set), `JUMPED=0 EXITED=1`.
+  - `3a:406b` (loop body) is entered ONLY from `3a:4102` — there is NO wild jump in.
+  - Yet `wCurChannel` still climbs 0→14 in a single `_UpdateSound` invocation
+    (`cp 8` is called only ~15 times TOTAL, monotonically 1..14), and only ONE channel
+    is briefly on (`40fc _UpdateSound.sound_channel_on` appears once as a `4102` pred).
+  - This is an unresolved contradiction under the static model: the loop should stop
+    at `a==8` but reaches 14. Resolving it needs WASM-level inspection of the compiled
+    `4102` block, or step-granular CPU-state capture across the `a==8` iteration
+    (instrument the branch to log `wCurChannel`+`cpu.f`+`cpu.pc` every pass).
+- ⏳ **Strategic next regardless:** code/data separation / jump-table following in the
+  recursive disassembler (mis-decoded data still produces spurious blocks like the
+  `call nc,$4111` at `3a:6337`). It's the general gate to the title screen.
+  (`gb_dbg_f/_a` are generic debug slots; harmless in normal builds.)
 - Practical note: translating all 128 banks → ~47 MB C / 24 MB wasm / ~4 min build.
   Targeted sets (e.g. `CODE_BANKS=0-7,58,66`) build in ~30s for fast iteration.
   Production will translate only code-bearing banks + jump-table-driven discovery.
