@@ -26,8 +26,11 @@ executing end-to-end through real hardware before widening coverage.
    Phase 3.
 
 ## Phase 2 — Hardware fidelity
-- PPU scanline renderer: BG + window + sprites, CGB VRAM-bank attributes, palette RAM,
-  8×16 sprites, priority. STAT/LY/LYC timing the game polls.
+- ✅ **PPU scanline renderer** (`ppu.c`): BG + window + sprites → RGBA framebuffer,
+  CGB VRAM-bank tile attributes, palette RAM ($FF68-$FF6B via bus.c), 8×16 sprites,
+  10-per-line limit, BG/OBJ priority + flips, DMG fallback shades, LCDC/STAT/LY/LYC
+  timing with mode progression. *Refinements still due:* mid-scanline accuracy,
+  OAM DMA source, exact STAT-interrupt edge timing.
 - MBC3 full: RAM enable, RTC latch + registers (Crystal uses the clock).
 - OAM DMA, HDMA (CGB), double-speed mode.
 - APU: 4 channels + frame sequencer → PCM.
