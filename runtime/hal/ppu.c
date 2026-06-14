@@ -20,6 +20,7 @@ const uint8_t *gb_framebuffer(void) { return framebuffer; }
  * 144 visible lines + 10 vblank lines = 154 lines * 456 = 70224 T-cycles/frame. */
 static uint32_t dot = 0;
 static int ly = 0;
+static int frame_latch = 0;     /* set when LY reaches 144; drained by ppu_take_frame */
 
 void ppu_step(uint32_t tcycles) {
     dot += tcycles;
@@ -28,6 +29,13 @@ void ppu_step(uint32_t tcycles) {
         /* TODO: render scanline `ly` (BG, window, sprites) into framebuffer. */
         ly = (ly + 1) % 154;
         io[0x44] = (uint8_t)ly;                /* LY */
-        if (ly == 144) int_request(0x01);      /* VBlank IRQ */
+        if (ly == 144) { int_request(0x01); frame_latch = 1; }   /* VBlank */
     }
+}
+
+/* gb_run_frame() polls this to know one frame's worth of scanlines elapsed. */
+int ppu_take_frame(void) {
+    int f = frame_latch;
+    frame_latch = 0;
+    return f;
 }

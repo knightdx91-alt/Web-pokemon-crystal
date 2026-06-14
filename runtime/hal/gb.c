@@ -24,19 +24,45 @@ void gb_init(const uint8_t *rom, uint32_t rom_len) {
     /* TODO: full post-BIOS register/IO state for CGB. */
 }
 
+/* ------------------------------------------------------------------ HAL sync */
+/* Advance the PPU/APU/timers to the CPU's current cycle count. Called from the
+ * generated dispatch (emit.py) at every block boundary, and from the frame loop.
+ * Device-only: it never services interrupts (that must happen at a clean top-level
+ * boundary, not mid-block) — it just lets devices raise IF. */
+static uint64_t synced;
+
+void hal_catch_up(void) {
+    uint64_t now = cpu.cycles;
+    if (now <= synced) return;
+    uint32_t dt = (uint32_t)(now - synced);
+    synced = now;
+    ppu_step(dt);
+    apu_step(dt);
+    timer_step(dt);
+}
+
+/* Run one frame: drive translated code (servicing interrupts at top level and
+ * honouring HALT) until the PPU has emitted a full frame of scanlines. A cycle
+ * budget guards against a runaway frame if the game never reaches VBlank. */
 void gb_run_frame(void) {
-    /* Run translated code, advancing the HAL, until the PPU signals VBlank.
-     * The recompiler entry bank_00 dispatches from cpu.pc; banked calls re-enter
-     * via rom_call(). Here we drive one frame's worth of execution. */
-    int start_ly = io[0x44];
-    (void)start_ly;
-    /* TODO: loop:
-     *   int_service();
-     *   if (!cpu.halted) bank_dispatch(cpu.pc);   // runs a block, updates cpu.cycles
-     *   uint32_t dt = consume_cycle_delta();
-     *   ppu_step(dt); apu_step(dt); timer_step(dt);
-     *   until LY wraps to 144 (VBlank).
-     */
+    uint64_t budget = cpu.cycles + 70224ull * 4;   /* ~4 frames of safety */
+
+    while (cpu.cycles < budget) {
+        if (cpu.ime && int_pending()) {
+            cpu.halted = 0;
+            int_service();          /* push pc, jump to vector, clear IME */
+        }
+        if (cpu.halted) {
+            /* nothing to execute: tick hardware forward to raise the next IRQ */
+            cpu.cycles += 4;
+            hal_catch_up();
+            if (int_pending()) cpu.halted = 0;
+        } else {
+            rom_exec();             /* run blocks from cpu.pc until ret-to-top/halt */
+            hal_catch_up();
+        }
+        if (ppu_take_frame()) return;
+    }
 }
 
 void rom_call(uint8_t bank, uint16_t addr) {

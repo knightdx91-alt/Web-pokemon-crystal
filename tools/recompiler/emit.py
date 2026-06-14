@@ -11,17 +11,23 @@ from disasm import Block
 from translate import translate
 
 
+# extra T-cycles when a conditional branch is taken (Pan Docs).
+_TAKEN_PENALTY = {"jr": 4, "jp": 4, "call": 12, "ret": 12}
+
+
 def _emit_branch(ins: Insn, lines: list[str]) -> None:
     """Emit C for a control-flow instruction at the end (or middle) of a block."""
     m = ins.mnemonic
     cond = None
     if ins.operands and isinstance(ins.operands[0], str) and ins.operands[0] in ("nz", "z", "nc", "c"):
-        flag = {"nz": "!GET_FLAG(FLAG_Z)", "z": "GET_FLAG(FLAG_Z)",
+        cond = {"nz": "!GET_FLAG(FLAG_Z)", "z": "GET_FLAG(FLAG_Z)",
                 "nc": "!GET_FLAG(FLAG_C)", "c": "GET_FLAG(FLAG_C)"}[ins.operands[0]]
-        cond = flag
+
+    pen = _TAKEN_PENALTY.get(m, 0) if cond else 0          # penalty only when conditional
+    tick = f"cpu.cycles += {pen}; " if pen else ""
 
     def guarded(body: str) -> str:
-        return f"if ({cond}) {{ {body} }}" if cond else body
+        return f"if ({cond}) {{ {tick}{body} }}" if cond else body
 
     if m in ("jp", "jr"):
         if ins.target is not None:
@@ -29,8 +35,9 @@ def _emit_branch(ins: Insn, lines: list[str]) -> None:
         else:  # jp hl (computed)
             lines.append("    pc = HL(); goto dispatch;")
     elif m == "call":
+        ret = ins.addr + ins.length
         if ins.target is not None:
-            lines.append("    " + guarded(f"push16(0x{ins.addr + ins.length:04x}); pc = 0x{ins.target:04x}; goto dispatch;"))
+            lines.append("    " + guarded(f"push16(0x{ret:04x}); pc = 0x{ins.target:04x}; goto dispatch;"))
     elif m == "rst":
         lines.append(f"    push16(0x{ins.addr + ins.length:04x}); pc = 0x{ins.target:04x}; goto dispatch;")
     elif m in ("ret", "reti"):
@@ -40,7 +47,11 @@ def _emit_branch(ins: Insn, lines: list[str]) -> None:
 
 
 def emit_block(blk: Block) -> list[str]:
-    out = [f"  case 0x{blk.start:04x}:"]
+    # Base T-cycles for the whole block charged up front; conditional-branch taken
+    # penalties are added inline by _emit_branch. hal_catch_up() at dispatch keeps
+    # the PPU/timers advancing during long routines (ARCHITECTURE.md §3.3).
+    base = sum(ins.cycles for ins in blk.insns)
+    out = [f"  case 0x{blk.start:04x}:", f"    cpu.cycles += {base};"]
     for ins in blk.insns:
         if ins.is_jump or ins.is_call or ins.is_ret:
             _emit_branch(ins, out)
@@ -62,6 +73,7 @@ def emit_bank(bank: int, blocks: dict[int, Block]) -> str:
              "",
              f"void bank_{bank:02x}(uint16_t pc) {{",
              "dispatch:",
+             "  hal_catch_up();          /* advance PPU/APU/timers to cpu.cycles */",
              "  switch (pc) {"]
     for start in sorted(blocks):
         lines.extend(emit_block(blocks[start]))

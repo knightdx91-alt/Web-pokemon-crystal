@@ -56,6 +56,9 @@ void    mbc_write(uint16_t addr, uint8_t value);
 void ppu_step(uint32_t tcycles);      /* advance PPU, may raise STAT/VBlank IRQ   */
 void apu_step(uint32_t tcycles);
 void timer_step(uint32_t tcycles);
+int  ppu_take_frame(void);            /* 1 once per frame when LY reaches 144     */
+
+void hal_catch_up(void);              /* advance devices to cpu.cycles (no IRQ svc)*/
 
 void int_request(uint8_t mask);       /* OR into IF */
 int  int_pending(void);               /* IE & IF & 0x1F */

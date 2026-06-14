@@ -19,6 +19,38 @@ ALU = ["add", "adc", "sub", "sbc", "and", "xor", "or", "cp"]  # alu[y]
 ROT = ["rlc", "rrc", "rl", "rr", "sla", "sra", "swap", "srl"]  # rot[y]
 
 
+# Base-opcode T-cycle costs (Pan Docs). For conditional jr/jp/call/ret these are the
+# NOT-taken cost; emit.py adds the taken penalty. CB-prefix costs handled below.
+CYCLES = [
+    4, 12, 8, 8, 4, 4, 8, 4, 20, 8, 8, 8, 4, 4, 8, 4,
+    4, 12, 8, 8, 4, 4, 8, 4, 12, 8, 8, 8, 4, 4, 8, 4,
+    8, 12, 8, 8, 4, 4, 8, 4, 8, 8, 8, 8, 4, 4, 8, 4,
+    8, 12, 8, 8, 12, 12, 12, 4, 8, 8, 8, 8, 4, 4, 8, 4,
+    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+    8, 8, 8, 8, 8, 8, 4, 8, 4, 4, 4, 4, 4, 4, 8, 4,
+    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+    4, 4, 4, 4, 4, 4, 8, 4, 4, 4, 4, 4, 4, 4, 8, 4,
+    8, 12, 12, 16, 12, 16, 8, 16, 8, 16, 12, 4, 12, 24, 8, 16,
+    8, 12, 12, 0, 12, 16, 8, 16, 8, 16, 12, 0, 12, 0, 8, 16,
+    12, 12, 8, 0, 0, 16, 8, 16, 16, 4, 16, 0, 0, 0, 8, 16,
+    12, 12, 8, 4, 0, 16, 8, 16, 12, 8, 16, 4, 0, 0, 8, 16,
+]
+
+
+def insn_cycles(op: int, cb: int | None) -> int:
+    if op == 0xCB:
+        # CB ops: 8 T, except those touching [hl]: 16 (bit n,[hl] is 12).
+        z = cb & 7
+        if z != 6:
+            return 8
+        return 12 if (cb >> 6) == 1 else 16
+    return CYCLES[op]
+
+
 @dataclass(frozen=True)
 class Insn:
     addr: int
@@ -26,6 +58,7 @@ class Insn:
     mnemonic: str
     operands: tuple = ()
     imm: int | None = None       # immediate value (n / nn / e), if any
+    cycles: int = 4              # base (not-taken) T-cycles
     # control-flow classification, used by disasm.py:
     is_jump: bool = False        # jp / jr
     is_call: bool = False        # call / rst
@@ -47,6 +80,14 @@ def _e8(b, i):
 
 def decode(buf: bytes, i: int, base_addr: int) -> Insn:
     """Decode one instruction at buf[i]; base_addr is the GB address of buf[i]."""
+    import dataclasses
+    ins = _decode(buf, i, base_addr)
+    op = buf[i]
+    cyc = insn_cycles(op, buf[i + 1] if op == 0xCB else None)
+    return dataclasses.replace(ins, cycles=cyc)
+
+
+def _decode(buf: bytes, i: int, base_addr: int) -> Insn:
     op = buf[i]
     a = base_addr
 

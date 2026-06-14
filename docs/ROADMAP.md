@@ -17,7 +17,13 @@ executing end-to-end through real hardware before widening coverage.
    implemented in `runtime/hal/alu.c`; all HAL compiles under `--target=wasm32`.
 3. `make recompile CODE_BANKS=0`; diff `generated/bank_00.c` against a known
    disassembly of bank 0 (home section) to validate real output (needs the ROM).
-4. Wire the frame loop in `gb.c` (cycle accounting + HAL catch-up + `int_service`).
+4. ✅ **Frame loop wired** (`gb.c`): per-instruction T-cycle accounting (decode
+   `CYCLES` table + taken-branch penalties), `hal_catch_up()` called at every
+   dispatch so PPU/APU/timers advance during long routines, HALT handling, and
+   top-level interrupt servicing. `gb_run_frame()` runs until the PPU latches a
+   VBlank, with a cycle budget guard. *Caveat:* `rom_exec()` dispatches bank 0
+   only — the banked-call trampoline (`rom_call` → per-bank dispatch table) is
+   Phase 3.
 
 ## Phase 2 — Hardware fidelity
 - PPU scanline renderer: BG + window + sprites, CGB VRAM-bank attributes, palette RAM,
