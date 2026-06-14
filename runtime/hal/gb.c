@@ -11,6 +11,8 @@ uint32_t g_rom_len;
 extern uint8_t io[];
 extern uint8_t ie_reg;
 
+static void trace_push(uint32_t v);   /* execution trace ring (defined below) */
+
 uint32_t g_traps;
 uint16_t g_last_trap_pc;
 uint8_t  g_last_trap_bank;
@@ -35,6 +37,14 @@ void hram_exec(uint16_t pc) {
     }
     trap_pc(pc);                           /* any other HRAM execution is unexpected */
 }
+
+/* --- execution trace ring (last N dispatched blocks, bank<<16|pc) ---------- */
+#define TRACE_N 1024
+static uint32_t g_trace[TRACE_N];
+static uint32_t g_trace_i;
+static void trace_push(uint32_t v) { g_trace[g_trace_i++ & (TRACE_N - 1)] = v; }
+uint32_t gb_dbg_trace_head(void) { return g_trace_i; }
+uint32_t gb_dbg_trace_at(uint32_t i) { return g_trace[i & (TRACE_N - 1)]; }
 
 /* --- debug surface (read CPU/trap state from JS) --------------------------- */
 uint16_t gb_dbg_pc(void)      { return cpu.pc; }
@@ -108,6 +118,7 @@ void gb_run_frame(void) {
             hal_catch_up();
             if (int_pending()) cpu.halted = 0;
         } else {
+            trace_push((uint32_t)cpu.rom_bank << 16 | cpu.pc);
             rom_dispatch(cpu.pc);           /* run exactly one block, advance cpu.pc */
             hal_catch_up();
         }

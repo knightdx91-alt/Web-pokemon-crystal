@@ -53,18 +53,22 @@ executing end-to-end through real hardware before widening coverage.
   0,1,2,5,0x58,0x66… `gb_init` sets post-boot CGB I/O state (LCD on). OAM DMA handled:
   `bus.c` $FF46 write copies to OAM; `hram_exec` emulates the HRAM OAM-DMA routine
   (RAM code can't be statically recompiled).
-- ⏳ **Two remaining blockers to title:**
-  1. **Jump-table following** — computed `jp hl` / `dw` pointer tables land on targets
-     the recursive walk didn't seed → traps. Need to recognise pokecrystal's jump-
-     table macros and seed their targets as blocks.
-  2. **Translation-correctness divergence** — boot eventually lands `cpu.pc` inside
-     *map-script data* (e.g. `66:4093 AzaleaTown_MapScripts`), i.e. an earlier
-     mistranslated instruction corrupted a return address / computed jump. Localise
-     via a determinism harness comparing CPU/mem state against a reference emulator
-     trace (Phase 4) frame by frame.
+- ✅ **Boot crash root-caused and fixed**: it was NOT a translation divergence — the
+  PPU raised the STAT interrupt every block instead of on mode/LYC *transitions*, an
+  interrupt storm that eventually corrupted control flow (pc landed in unrelated bank
+  code). Fixed by edge-triggering STAT mode + LYC interrupts (`ppu.c`). After the fix
+  boot runs with **no traps** and reaches the **main game loop**: the per-frame sound
+  engine (`ParseMusic`/`GetMusicByte`/`GetFrequency`, bank 0x3a) runs every VBlank.
+- 🔧 **Debug/trace tooling** added for this kind of work: execution trace ring +
+  `gb_dbg_*` exports, and `tools/trace_boot.mjs` (boots the real ROM, runs to the
+  first trap, prints the symbol-annotated block trace leading up to it).
+- ⏳ **Next: black screen.** LCD is on (LCDC=0xe3) and the game loop runs, but the
+  framebuffer is uniform black — investigate palette RAM population, BG tilemap/tile
+  fetch (CGB VRAM banking), and whether the main loop is progressing past the
+  intro/copyright. Then jump-table following to widen translated coverage cleanly.
 - Practical note: translating all 128 banks → ~47 MB C / 24 MB wasm / ~4 min build.
-  Fine for bring-up; production will translate only code-bearing banks + lazy/jump-
-  table-driven discovery, and/or split the wasm.
+  Targeted sets (e.g. `CODE_BANKS=0-7,58,66`) build in ~30s for fast iteration.
+  Production will translate only code-bearing banks + jump-table-driven discovery.
 
 ## Phase 4 — Validation & feel
 - Determinism harness: hash framebuffer at known frames against a reference emulator

@@ -178,20 +178,23 @@ static uint32_t dot = 0;
 static int ly = 0;
 static int frame_latch = 0;
 
+static int cur_mode = -1;       /* edge-trigger STAT: only fire on a real change */
+static int lyc_match = 0;
+
 static void set_mode(int mode) {
     io[R_STAT] = (uint8_t)((io[R_STAT] & ~0x03) | (mode & 3));
-    /* STAT mode interrupts (bits 3-5); VBlank handled via IF.0 below */
-    static const uint8_t bit[3] = {0x08, 0x10, 0x20};   /* HBlank, VBlank, OAM */
+    if (mode == cur_mode) return;
+    cur_mode = mode;
+    /* STAT mode interrupt enables (bits 3-5: HBlank/VBlank/OAM) */
+    static const uint8_t bit[3] = {0x08, 0x10, 0x20};
     if (mode < 3 && (io[R_STAT] & bit[mode])) int_request(0x02);
 }
 
 static void check_lyc(void) {
-    if (io[R_LY] == io[R_LYC]) {
-        io[R_STAT] |= 0x04;
-        if (io[R_STAT] & 0x40) int_request(0x02);
-    } else {
-        io[R_STAT] &= ~0x04;
-    }
+    int match = (io[R_LY] == io[R_LYC]);
+    if (match) io[R_STAT] |= 0x04; else io[R_STAT] &= ~0x04;
+    if (match && !lyc_match && (io[R_STAT] & 0x40)) int_request(0x02);   /* rising edge */
+    lyc_match = match;
 }
 
 void ppu_step(uint32_t tcycles) {
