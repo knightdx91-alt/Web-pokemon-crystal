@@ -6,7 +6,7 @@ rom:       ; bash build/build_rom.sh
 recompile: ; bash build/recompile.sh
 wasm:      ; bash build/build_wasm.sh
 embed:     ; bash build/embed_rom.sh
-serve:     ; cd web && python3 -m http.server 8000
+serve:     ; python3 build/serve.py 8000   # gzip-compressed -> http://localhost:8000
 
 # Self-contained browser build: ROM data embedded in the .wasm (no separate ROM
 # file). Run after `make sources rom recompile`. Produces web/pokecrystal.wasm

@@ -32,13 +32,15 @@ defined SM83 opcode is validated against the SingleStepTests vectors (`make opte
 
 What works: full instruction set, multi-bank dispatch, MBC3 banking, the PPU
 (BG/window/sprites, CGB palettes, scanline timing), interrupts/timers, OAM-DMA and
-CGB HDMA, a frame loop with cycle-accurate VBlank handling, keyboard + touch input,
-and an optional self-contained build (ROM data embedded in the `.wasm`).
+CGB HDMA, a frame loop with cycle-accurate VBlank handling, **4-channel audio** (APU
+→ WebAudio), keyboard + touch input, a responsive fit-to-screen layout, and an
+optional self-contained build (ROM data embedded in the `.wasm`).
 
-What's not done yet: **audio output** (the APU is a stub — silent), the **wasm is
-large** (~31 MB; all 128 banks are translated, including data banks that become dead
-code — trimming this is the main optimization left), and end-to-end title→gameplay
-hasn't been click-verified in a real browser. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+What's not done yet: the **wasm binary is large** (~31 MB — all 128 banks are
+translated, incl. data banks that become dead code; `make serve` gzips it to ~4 MB
+over the wire, but a real binary shrink means translating only code-bearing banks,
+which risks traps on untested paths), and end-to-end title→gameplay hasn't been
+click-verified in a real browser. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Layout
 
