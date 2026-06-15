@@ -88,6 +88,8 @@ async function main() {
     X.gb_init(romPtr, rom.length);
   }
 
+  setupAudio(X, mem);
+
   function frame() {
     X.gb_set_buttons(buttons);
     X.gb_run_frame();
@@ -97,6 +99,39 @@ async function main() {
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
+}
+
+// --- Audio: drain the wasm PCM ring into WebAudio (resampled) ---------------
+function setupAudio(X, mem) {
+  if (!X.gb_audio_samples || !window.AudioContext && !window.webkitAudioContext) return;
+  const RINGF = 16384, OUT_HZ = 32768;
+  const actx = new (window.AudioContext || window.webkitAudioContext)();
+  const ratio = OUT_HZ / actx.sampleRate;     // wasm frames per output frame
+  const node = actx.createScriptProcessor(2048, 0, 2);
+  let frac = 0;
+  node.onaudioprocess = (e) => {
+    const L = e.outputBuffer.getChannelData(0), R = e.outputBuffer.getChannelData(1);
+    const ring = new Int16Array(mem.buffer, X.gb_audio_samples(), RINGF * 2);
+    const avail = X.gb_audio_available();
+    const tail = X.gb_audio_tail();
+    let pos = frac, consumed = 0;
+    for (let i = 0; i < L.length; i++) {
+      const idx = pos | 0;
+      if (idx < avail) {
+        const f = (tail + idx) & (RINGF - 1);
+        L[i] = ring[f * 2] / 32768; R[i] = ring[f * 2 + 1] / 32768;
+      } else { L[i] = 0; R[i] = 0; }   // underrun -> silence
+      pos += ratio;
+    }
+    consumed = Math.min(avail, pos | 0);
+    frac = pos - consumed;
+    X.gb_audio_consume(consumed);
+  };
+  node.connect(actx.destination);
+  // Browsers block audio until a user gesture — resume on first input.
+  const resume = () => actx.resume();
+  addEventListener("pointerdown", resume, { once: true });
+  addEventListener("keydown", resume, { once: true });
 }
 
 main();

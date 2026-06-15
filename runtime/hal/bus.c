@@ -50,6 +50,7 @@ uint8_t bus_read(uint16_t addr) {
     if (addr < 0xFEA0)            return oam[addr - 0xFE00];
     if (addr < 0xFF00)            return 0xFF;                              /* unusable */
     if (addr == 0xFF00)           return joypad_read();                    /* input.c */
+    if (addr >= 0xFF10 && addr <= 0xFF3F) return apu_read(addr);           /* sound */
     if (addr >= 0xFF68 && addr <= 0xFF6B) return ppu_pal_read(addr & 0xFF); /* CGB palettes */
     if (addr < 0xFF80)            return io[addr - 0xFF00];                 /* TODO device regs */
     if (addr < 0xFFFF)            return hram[addr - 0xFF80];
@@ -67,6 +68,7 @@ void bus_write(uint16_t addr, uint8_t value) {
     if (addr < 0xFE00)            { wram[addr - 0xE000] = value; return; }
     if (addr < 0xFEA0)            { oam[addr - 0xFE00] = value; return; }
     if (addr < 0xFF00)            return;
+    if (addr >= 0xFF10 && addr <= 0xFF3F) { apu_write(addr, value); return; }  /* sound */
     if (addr == 0xFF46)           { uint16_t s = (uint16_t)(value << 8);     /* OAM DMA */
                                     for (int i = 0; i < 0xA0; i++) oam[i] = bus_read(s + i);
                                     io[0x46] = value; return; }

@@ -8,7 +8,7 @@ OUT="$ROOT/web/pokecrystal.wasm"
 command -v clang >/dev/null || { echo "clang not found"; exit 1; }
 
 EXPORTS=(gb_init gb_boot gb_run_frame gb_set_buttons gb_framebuffer
-         gb_audio_samples gb_audio_available gb_audio_consume
+         gb_audio_samples gb_audio_available gb_audio_consume gb_audio_tail
          gb_dbg_pc gb_dbg_bank gb_dbg_halted gb_dbg_lcdc
          gb_dbg_traps gb_dbg_trap_pc gb_dbg_trap_bank
          gb_dbg_trace_head gb_dbg_trace_at

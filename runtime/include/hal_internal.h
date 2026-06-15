@@ -20,6 +20,8 @@ void bank_00(uint16_t pc);
 /* ... bank_01 .. bank_NN declared in generated/labels.h */
 
 uint8_t joypad_read(void);  /* $FF00, runtime/hal/timer_irq_input.c */
+void    apu_write(uint16_t addr, uint8_t v);  /* $FF10-$FF3F, runtime/hal/apu.c */
+uint8_t apu_read(uint16_t addr);
 
 /* set by hal_catch_up when the frame loop should reclaim control; the generated
  * dispatch checks it at each block boundary and returns (cpu.pc is checkpointed). */
