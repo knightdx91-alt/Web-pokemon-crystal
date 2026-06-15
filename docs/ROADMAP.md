@@ -43,7 +43,25 @@ executing end-to-end through real hardware before widening coverage.
 - Correct joypad bit mapping.
 
 ## Phase 3 — Boot to title
-- ✅ **Multi-bank dispatch built**: per-block-return model + `rom_dispatch` trampoline
+- 🎉🎉🎉 **RENDERS IN COLOR.** The real Pokémon Crystal ROM, statically recompiled to
+  WebAssembly, now boots and renders the intro **in color**, running stably for
+  16,000+ frames with zero traps. Milestone reached via a chain of fixes this session
+  (newest first):
+  1. **CGB palette address bug** — `bus.c` passed the full address (`0xFF69`) to
+     `ppu_pal_write/read`, which switch on the low byte (`0x69`); no case matched, so
+     palette RAM was never written. Fix: `addr & 0xFF`. → palettes load, color renders.
+  2. **Cycle inflation** — emitter charged whole-block cycles up front; early
+     `ret z`/`jr` over-charged → blew the VBlank `Serve2bppRequest` LY-window → tiles
+     never loaded. Fix: charge cycles at each exit point. → tiles load, intro draws.
+  3. **Conditional `ret`** — disassembler dropped the fall-through after `ret z/nz/..`;
+     the C switch silently skipped instructions. Fix: conditional ret continues inline.
+     → boots into the intro, sound works, no traps.
+  4. Frame model yields on a full-frame cycle deadline (VBlank handler runs near LY=144).
+- Reusable tooling: `tools/render_bg.mjs` (grayscale BG dump), framebuffer PNG capture,
+  trace ring + `gb_dbg_*` debug surface (read/watch+PC, serve/preamble/palette counters).
+- ⏳ **Next:** reach/verify the title screen + main menu (drive input); audio output
+  to WebAudio; wire the web/ frontend to load a local ROM; then save (SRAM) + perf.
+  Also: trim the per-block debug probes in `trace_push` once timing work is settled.
   (`generated/dispatch.c`) routing `cpu.pc` to `bank_NN` via a table indexed by
   `cpu.rom_bank` (home → bank 0). Cross-bank calls/returns work. Disassembler now
   splits blocks at `call`/`rst` so return addresses are block starts; symbols are
