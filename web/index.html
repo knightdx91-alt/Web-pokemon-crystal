@@ -9,7 +9,9 @@
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
                font-family: system-ui, sans-serif; -webkit-user-select: none; user-select: none;
                -webkit-tap-highlight-color: transparent; touch-action: none; }
-  #stage { position: fixed; inset: 0; display: grid; place-items: center; }
+  /* Center the game canvas in the middle of the screen (both axes). */
+  #stage { position: fixed; inset: 0; display: flex;
+           align-items: center; justify-content: center; }
   /* Largest 160:144 box that fits the viewport — fills width in portrait,
      height in landscape, never distorts. */
   #screen { image-rendering: pixelated; image-rendering: crisp-edges;
