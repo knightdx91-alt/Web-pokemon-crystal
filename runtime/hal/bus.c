@@ -29,13 +29,15 @@ uint32_t g_vramw, g_hdma;                            /* debug counters */
 uint32_t gb_dbg_vramw(void) { return g_vramw; }
 uint32_t gb_dbg_hdma(void)  { return g_hdma; }
 
-/* write-watch: record values written to a chosen address (debug) */
+/* write-watch: record value + writing block's pc/bank for a chosen address (debug) */
 static int g_watch = -1;
 static uint8_t g_watch_buf[1024];
+static uint32_t g_watch_pc[1024];
 static uint32_t g_watch_head;
 void     gb_dbg_set_watch(int addr) { g_watch = addr; g_watch_head = 0; }
 uint32_t gb_dbg_watch_head(void) { return g_watch_head; }
 uint8_t  gb_dbg_watch_at(uint32_t i) { return g_watch_buf[i & 1023]; }
+uint32_t gb_dbg_watch_pc(uint32_t i) { return g_watch_pc[i & 1023]; }
 
 uint8_t bus_read(uint16_t addr) {
     if (addr < 0x4000)            return g_rom[addr];                       /* bank 0 */
@@ -48,14 +50,15 @@ uint8_t bus_read(uint16_t addr) {
     if (addr < 0xFEA0)            return oam[addr - 0xFE00];
     if (addr < 0xFF00)            return 0xFF;                              /* unusable */
     if (addr == 0xFF00)           return joypad_read();                    /* input.c */
-    if (addr >= 0xFF68 && addr <= 0xFF6B) return ppu_pal_read(addr);       /* CGB palettes */
+    if (addr >= 0xFF68 && addr <= 0xFF6B) return ppu_pal_read(addr & 0xFF); /* CGB palettes */
     if (addr < 0xFF80)            return io[addr - 0xFF00];                 /* TODO device regs */
     if (addr < 0xFFFF)            return hram[addr - 0xFF80];
     return ie_reg;
 }
 
 void bus_write(uint16_t addr, uint8_t value) {
-    if ((int)addr == g_watch) g_watch_buf[g_watch_head++ & 1023] = value;
+    if ((int)addr == g_watch) { g_watch_pc[g_watch_head & 1023] = ((uint32_t)cpu.rom_bank << 16) | cpu.pc;
+                                g_watch_buf[g_watch_head++ & 1023] = value; }
     if (addr < 0x8000)            { mbc_write(addr, value); return; }       /* MBC control */
     if (addr < 0xA000)            { g_vramw++; vram[vram_bank * 0x2000 + (addr - 0x8000)] = value; return; }
     if (addr < 0xC000)            { cart_ram[cpu.ram_bank * 0x2000 + (addr - 0xA000)] = value; return; }
@@ -77,7 +80,7 @@ void bus_write(uint16_t addr, uint8_t value) {
         g_hdma++; io[0x55] = 0xFF;   /* transfer complete */
         return;
     }
-    if (addr >= 0xFF68 && addr <= 0xFF6B) { ppu_pal_write(addr, value); return; }  /* CGB palettes */
+    if (addr >= 0xFF68 && addr <= 0xFF6B) { ppu_pal_write(addr & 0xFF, value); return; }  /* CGB palettes */
     if (addr == 0xFF70)           { wram_bank = (value & 7) ? (value & 7) : 1; return; }
     if (addr < 0xFF80)            { io[addr - 0xFF00] = value; return; }    /* TODO device regs */
     if (addr < 0xFFFF)            { hram[addr - 0xFF80] = value; return; }
