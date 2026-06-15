@@ -63,6 +63,15 @@ uint32_t gb_dbg_traps(void)   { return g_traps; }
 uint16_t gb_dbg_trap_pc(void) { return g_last_trap_pc; }
 uint8_t  gb_dbg_trap_bank(void){ return g_last_trap_bank; }
 
+/* Boot from the ROM data embedded directly in the wasm (generated/rom_embed.S),
+ * so the module is self-contained: the web frontend calls gb_boot() and needs no
+ * separate ROM file. Headless tests can still call gb_init() with a JS-loaded ROM. */
+void gb_boot(void) {
+    extern const uint8_t gb_embedded_rom[];
+    extern const uint32_t gb_embedded_rom_len;
+    gb_init(gb_embedded_rom, gb_embedded_rom_len);
+}
+
 void gb_init(const uint8_t *rom, uint32_t rom_len) {
     g_rom = rom; g_rom_len = rom_len;
     cpu = (CpuState){0};

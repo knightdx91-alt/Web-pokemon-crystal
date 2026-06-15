@@ -4,6 +4,7 @@
 # build artifacts
 /build/rom/
 /generated/*.c
+/generated/rom_embed.S
 /web/pokecrystal.wasm
 /tools/optest/optest_gen.c
 /tools/optest/optest.wasm

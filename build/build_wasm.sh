@@ -7,7 +7,7 @@ OUT="$ROOT/web/pokecrystal.wasm"
 
 command -v clang >/dev/null || { echo "clang not found"; exit 1; }
 
-EXPORTS=(gb_init gb_run_frame gb_set_buttons gb_framebuffer
+EXPORTS=(gb_init gb_boot gb_run_frame gb_set_buttons gb_framebuffer
          gb_audio_samples gb_audio_available gb_audio_consume
          gb_dbg_pc gb_dbg_bank gb_dbg_halted gb_dbg_lcdc
          gb_dbg_traps gb_dbg_trap_pc gb_dbg_trap_bank
@@ -24,5 +24,6 @@ clang --target=wasm32 -nostdlib -O2 -ffreestanding \
   -Wl,--no-entry -Wl,--allow-undefined $EXPORT_FLAGS \
   -Wl,--export=__heap_base \
   "$ROOT"/runtime/hal/*.c "$ROOT"/generated/*.c \
+  ${EMBED_ROM:+"$ROOT/generated/rom_embed.S"} \
   -o "$OUT"
 echo "wasm -> $OUT"

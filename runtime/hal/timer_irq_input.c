@@ -49,8 +49,10 @@ void gb_set_buttons(uint8_t mask) { buttons = mask; }
 
 uint8_t joypad_read(void) {
     uint8_t sel = io[0x00] & 0x30;
-    uint8_t lo = 0x0F;
-    if (!(sel & 0x10)) lo &= ~(buttons & 0x0F);          /* direction... mapped below */
-    if (!(sel & 0x20)) lo &= ~((buttons >> 4) & 0x0F);   /* TODO: correct bit mapping */
+    uint8_t lo = 0x0F;   /* 0 = pressed */
+    /* P14 (bit4) selects directions: GB bits R/L/U/D = our buttons bits 4-7. */
+    if (!(sel & 0x10)) lo &= ~((buttons >> 4) & 0x0F);
+    /* P15 (bit5) selects action buttons: GB bits A/B/Sel/Start = our buttons bits 0-3. */
+    if (!(sel & 0x20)) lo &= ~(buttons & 0x0F);
     return (sel | lo | 0xC0);
 }
