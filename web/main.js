@@ -16,8 +16,46 @@ const KEY = {
   "ArrowRight": 4, "ArrowLeft": 5, "ArrowUp": 6, "ArrowDown": 7,
 };
 let buttons = 0;
+const DIR_MASK = (1 << 4) | (1 << 5) | (1 << 6) | (1 << 7); // R L U D
 addEventListener("keydown", e => { if (e.code in KEY) { buttons |= 1 << KEY[e.code]; e.preventDefault(); } });
 addEventListener("keyup",   e => { if (e.code in KEY) { buttons &= ~(1 << KEY[e.code]); e.preventDefault(); } });
+
+// --- On-screen A/B/Start/Select buttons (touch + mouse) ---------------------
+for (const el of document.querySelectorAll(".btn[data-btn]")) {
+  const bit = 1 << Number(el.dataset.btn);
+  const press = e => { buttons |= bit; el.classList.add("held"); e.preventDefault(); };
+  const release = e => { buttons &= ~bit; el.classList.remove("held"); e.preventDefault(); };
+  el.addEventListener("pointerdown", press);
+  el.addEventListener("pointerup", release);
+  el.addEventListener("pointercancel", release);
+  el.addEventListener("pointerleave", release);
+}
+
+// --- Drag-to-move on the game area: drag direction = held D-pad --------------
+// Touch (or mouse-drag) the screen and pull in a direction; that direction is
+// held like a D-pad until you release. Diagonals allowed. Small dead-zone.
+(function dragToMove() {
+  const screen = document.getElementById("screen");
+  let active = null, ox = 0, oy = 0;
+  const DEAD = 14; // px before movement registers
+  const update = (x, y) => {
+    let dir = 0;
+    const dx = x - ox, dy = y - oy;
+    if (Math.hypot(dx, dy) >= DEAD) {
+      if (dx >  DEAD * 0.5) dir |= 1 << 4;      // Right
+      if (dx < -DEAD * 0.5) dir |= 1 << 5;      // Left
+      if (dy < -DEAD * 0.5) dir |= 1 << 6;      // Up
+      if (dy >  DEAD * 0.5) dir |= 1 << 7;      // Down
+    }
+    buttons = (buttons & ~DIR_MASK) | dir;
+  };
+  screen.addEventListener("pointerdown", e => { active = e.pointerId; ox = e.clientX; oy = e.clientY;
+                                                screen.setPointerCapture(e.pointerId); e.preventDefault(); });
+  screen.addEventListener("pointermove", e => { if (e.pointerId === active) { update(e.clientX, e.clientY); e.preventDefault(); } });
+  const end = e => { if (e.pointerId === active) { active = null; buttons &= ~DIR_MASK; e.preventDefault(); } };
+  screen.addEventListener("pointerup", end);
+  screen.addEventListener("pointercancel", end);
+})();
 
 async function fetchBytes(url) {
   const res = await fetch(url);

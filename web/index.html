@@ -2,21 +2,54 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Pokémon Crystal — WebAssembly</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #0b0b10; color: #cdd; font-family: system-ui, sans-serif; }
-  main { display: grid; place-items: center; height: 100%; gap: 12px; }
-  canvas { image-rendering: pixelated; width: 480px; height: 432px; background: #081820;
-           border: 2px solid #294; border-radius: 6px; }
-  .hint { font-size: 13px; opacity: .7; }
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
+               font-family: system-ui, sans-serif; -webkit-user-select: none; user-select: none;
+               -webkit-tap-highlight-color: transparent; touch-action: none; }
+  #stage { position: fixed; inset: 0; display: grid; place-items: center; }
+  /* Largest 160:144 box that fits the viewport — fills width in portrait,
+     height in landscape, never distorts. */
+  #screen { image-rendering: pixelated; image-rendering: crisp-edges;
+            width: min(100vw, calc(100vh * 160 / 144));
+            height: min(100vh, calc(100vw * 144 / 160));
+            background: #081820; display: block; }
+
+  /* Translucent on-screen controls, overlaid in the corners. */
+  .pad { position: fixed; bottom: max(14px, env(safe-area-inset-bottom));
+         display: flex; gap: 10px; align-items: center; z-index: 5; }
+  .pad.left  { left: max(14px, env(safe-area-inset-left)); }
+  .pad.right { right: max(14px, env(safe-area-inset-right)); }
+  .pad.mid   { left: 50%; transform: translateX(-50%); gap: 16px; bottom: max(10px, env(safe-area-inset-bottom)); }
+  .btn { -webkit-user-select: none; user-select: none; touch-action: none;
+         display: grid; place-items: center; color: #fff; font-weight: 700;
+         background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.30);
+         backdrop-filter: blur(2px); border-radius: 999px; }
+  .ab  { width: 60px; height: 60px; font-size: 20px; }
+  .ss  { width: 54px; height: 26px; border-radius: 999px; font-size: 11px; letter-spacing: .5px; }
+  .btn:active, .btn.held { background: rgba(255,255,255,.40); }
+  .hint { position: fixed; top: max(8px, env(safe-area-inset-top)); left: 0; right: 0;
+          text-align: center; color: rgba(255,255,255,.45); font-size: 12px; z-index: 5;
+          pointer-events: none; }
 </style>
 </head>
 <body>
-<main>
+<main id="stage">
   <canvas id="screen" width="160" height="144"></canvas>
-  <div class="hint">Arrows = D-pad · Z = A · X = B · Enter = Start · Shift = Select</div>
 </main>
+<div class="hint" id="hint">drag on screen to move · keys: arrows / Z / X / Enter</div>
+
+<div class="pad mid">
+  <div class="btn ss" data-btn="2">SEL</div>
+  <div class="btn ss" data-btn="3">START</div>
+</div>
+<div class="pad right">
+  <div class="btn ab" data-btn="1">B</div>
+  <div class="btn ab" data-btn="0">A</div>
+</div>
+
 <script type="module" src="./main.js"></script>
 </body>
 </html>
