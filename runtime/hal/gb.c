@@ -43,25 +43,11 @@ void hram_exec(uint16_t pc) {
 static uint32_t g_trace[TRACE_N];     /* bank<<16 | pc */
 static uint32_t g_trace_aux[TRACE_N]; /* wCurChannel<<8 | cpu.f, sampled per block */
 static uint32_t g_trace_i;
-int g_serve_ly = -1; uint32_t g_serve_copies = 0;   /* debug: Serve2bppRequest window */
-int g_vbl_ly = -1, g_vec_ly = -1;
-uint32_t g_vbl_cyc, g_serve_cyc;
 static void trace_push(uint32_t v) {
     g_trace[g_trace_i & (TRACE_N - 1)] = v;
     g_trace_aux[g_trace_i & (TRACE_N - 1)] = (bus_read(0xC299) << 8) | cpu.f;
     g_trace_i++;
-    uint16_t pc = v & 0xFFFF;
-    if (pc == 0x1769) g_serve_ly = io[0x44];   /* LY when Serve2bppRequest entered */
-    if (pc == 0x177d) g_serve_copies++;        /* _Serve2bppRequest (the real copy) ran */
-    if (pc == 0x0283) { g_vbl_ly = io[0x44]; g_vbl_cyc = (uint32_t)cpu.cycles; }
-    if (pc == 0x1769) g_serve_cyc = (uint32_t)cpu.cycles;
-    if (pc == 0x0040) g_vec_ly = io[0x44];     /* LY when the VBlank vector is serviced */
 }
-uint32_t gb_dbg_preamble_cyc(void) { return g_serve_cyc - g_vbl_cyc; }
-int      gb_dbg_serve_ly(void) { return g_serve_ly; }
-uint32_t gb_dbg_serve_copies(void) { return g_serve_copies; }
-int      gb_dbg_vbl_ly(void) { return g_vbl_ly; }
-int      gb_dbg_vec_ly(void) { return g_vec_ly; }
 uint32_t gb_dbg_trace_head(void) { return g_trace_i; }
 uint32_t gb_dbg_trace_at(uint32_t i) { return g_trace[i & (TRACE_N - 1)]; }
 uint32_t gb_dbg_trace_aux(uint32_t i) { return g_trace_aux[i & (TRACE_N - 1)]; }
